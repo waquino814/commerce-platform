@@ -1,0 +1,21 @@
+{
+  "name": "@commerce/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@commerce/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "migrations"
+  ],
+  "dependencies": {
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  }
+}

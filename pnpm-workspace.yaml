@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+
+# esbuild (used by tsx and Vitest) installs its platform binary in a postinstall script.
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,16 @@
+{
+  "name": "@commerce/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "scripts": {
+    "dev": "tsx watch --conditions=@commerce/source --env-file-if-exists=../../.env src/main.ts"
+  },
+  "dependencies": {
+    "@commerce/db": "workspace:*",
+    "fastify": "5.12.7",
+    "pino": "10.4.0",
+    "zod": "4.6.7"
+  }
+}

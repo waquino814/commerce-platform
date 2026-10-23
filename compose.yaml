@@ -1,0 +1,87 @@
+name: commerce-platform
+
+x-app: &app
+  build: .
+  image: commerce-platform:local
+  stop_grace_period: 10s
+
+x-database-url: &database-url postgres://commerce:commerce@postgres:5432/commerce
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: commerce
+      POSTGRES_PASSWORD: commerce
+      POSTGRES_DB: commerce
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # TCP check: the image's temporary init server listens on the socket only.
+      test: ['CMD', 'pg_isready', '-h', '127.0.0.1', '-U', 'commerce', '-d', 'commerce']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    <<: *app
+    command: ['node', 'packages/db/dist/cli/migrate.js']
+    environment:
+      DATABASE_URL: *database-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  orders-api:
+    <<: *app
+    command: ['node', 'apps/orders-api/dist/main.js']
+    environment:
+      DATABASE_URL: *database-url
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - '3000:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/readyz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  worker:
+    <<: *app
+    command: ['node', 'apps/worker/dist/main.js']
+    environment:
+      DATABASE_URL: *database-url
+      WORKER_ID: worker-1
+      HEALTH_PORT: 3001
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - '3001:3001'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/readyz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  postgres-data:

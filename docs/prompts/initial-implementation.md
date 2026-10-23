@@ -1,6 +1,6 @@
 # Initial implementation prompt
 
-Status: revised draft, pending approval. Scope is milestone M1 from `docs/roadmap.md`.
+Status: approved and implemented. Scope is milestone M1 from `docs/roadmap.md`. Deviations are recorded in the M1 completion report and in `docs/roadmap.md`.
 
 ---
 
@@ -37,14 +37,17 @@ Read `CLAUDE.md`, `docs/architecture.md`, `docs/roadmap.md`, and every ADR in `d
    - Integration tests use `TEST_DATABASE_URL` pointing at `commerce_test`, and reset tables between tests.
 
 ## Out of scope for M1
+
 Commerce endpoints, products, inventory, payment simulation, stale claim recovery, OpenTelemetry export, load generation, fault injection, and any generic job framework. Do not add dependencies for these.
 
 ## Keep future milestones easy
+
 - Keep construction in factories, with `src/main.ts` as the only entrypoint per app, so M3 can preload OpenTelemetry with `node --import`.
 - Use pino through Fastify in both apps, so M3 only needs to add `trace_id`.
 - Pass the pool and other dependencies in as parameters, never as module singletons, so M5 can wrap them for fault injection.
 
 ## Acceptance verification
+
 Run these from a clean clone of the repository and report each result. Copy `.env.example` to `.env` first.
 
 ```sh
@@ -94,6 +97,7 @@ docker compose down -v
 9. **CI:** after the first push, the GitHub Actions workflow shows a green run.
 
 ## Finish
+
 - Report each acceptance check as pass or fail with its output. Do not mark M1 done if any check fails.
 - Update the M1 status in `docs/roadmap.md` and the README.
 - Record any decision not already covered by an ADR, such as the migration runner design, as a new ADR.
