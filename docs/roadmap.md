@@ -2,12 +2,12 @@
 
 Each milestone is done only when every acceptance criterion passes on a clean clone.
 
-## M0: Foundation (done apart from the first commit)
+## M0: Foundation (done)
 
 - [x] Engineering rules, README, architecture, roadmap, and ADRs exist and agree with each other.
-- [ ] First commit made.
+- [x] First commit made.
 
-## M1: Skeleton, schema, and health (implemented; CI run pending)
+## M1: Skeleton, schema, and health (done)
 
 Scope: pnpm workspace, `apps/orders-api`, `apps/worker`, `packages/db`, the `orders` table, health endpoints, Docker Compose, and CI. No commerce endpoints, telemetry export, load generation, or faults.
 
@@ -18,17 +18,30 @@ Scope: pnpm workspace, `apps/orders-api`, `apps/worker`, `packages/db`, the `ord
 - [x] Concurrent worker claims never claim the same order twice.
 - [x] Both services exit with code 0 within 10 seconds of SIGTERM.
 - [x] Invalid configuration makes a service exit with a non-zero code and a clear message.
-- [ ] The GitHub Actions workflow passes on the first push. Not verified: the repository has not been committed or pushed.
+- [x] The GitHub Actions workflow passes on the first push. The repository owner confirmed it after pushing the M1 commit.
 
 Exact verification commands live in `docs/prompts/initial-implementation.md`.
 
-## M2: Commerce core
+## M2: Working commerce flow (verified locally; GitHub Actions run pending)
 
-- Endpoints exist for listing products, placing an order, and fetching an order.
-- The worker reserves inventory and calls the payment simulator, moving orders to `paid` or `failed`.
-- Stale claims return to `pending`. Orders past the attempt limit become `failed`. Both are covered by tests.
-- Seed data creates at least 1,000 products deterministically.
-- Line coverage is at least 80% for order and pricing logic. Integration tests cover the full order lifecycle against Postgres.
+Scope and the 36 numbered acceptance criteria are in `docs/prompts/m2-design.md`. The processing protocol is recorded in ADR 0005. No UI, telemetry, load generation, or faults.
+
+- [x] **Core flow, 1 to 16:**
+  - catalog listing, and order creation, idempotency and retrieval;
+  - payment outcomes and stock handling;
+  - two workers over 200 mixed orders, stale claims, the transition trigger and constraints;
+  - coverage of at least 80% per listed module, and the Compose end-to-end checks.
+- [x] **Claim capacity, 17 to 19:** slot-based claiming, proven with event-synchronized tests rather than wall-clock thresholds, plus startup validation of the processing budget.
+- [x] **Crash after approval, 20 to 22:** recovery reuses the recorded charge, with one ledger row and one reservation.
+- [x] **Shutdown, 23 to 25 and 35:**
+  - drain, and release of a charge recorded just before exit;
+  - a stale worker fenced out after recovery;
+  - a release blocked by a held row lock, which exits with code 1 and leaves the order recoverable.
+- [x] **Lookup failures and `payment_unknown`, 26 to 31 and 36:** backoff, parking, rechecks, authoritative approval or void, racing workers, and stock released at most once.
+- [x] **Ledger serialization and attempt semantics, 32 to 34:** both charge-versus-void orders, duplicate requests, and shutdowns not spending the payment budget.
+- [ ] The GitHub Actions workflow passes with the M2 changes. Not yet observed. Mark this, and the milestone, done only after a green run.
+
+Verification: `pnpm test:coverage` runs the deterministic criteria against the Compose Postgres. Criteria 1, 14, 15 and the informational timing check run against `docker compose up --build --wait`.
 
 ## M3: Observability
 

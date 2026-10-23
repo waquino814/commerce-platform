@@ -6,23 +6,32 @@ It is the first of two repositories in an AI engineering portfolio. The second, 
 
 ## Status
 
-- **M0, Foundation:** documentation, engineering rules, and ADRs are done. The first commit is pending.
-- **M1, Skeleton, schema, and health:** implemented and verified locally. The GitHub Actions run has not happened yet, because the repository has not been pushed.
-- **M2 and later:** not started. There are no commerce endpoints yet, and the worker only claims orders.
+- **M0, Foundation, and M1, Skeleton, schema, and health:** done.
+- **M2, Working commerce flow:** implemented, and all 36 acceptance criteria pass locally. The GitHub Actions run for M2 has not been observed yet.
+- **M3 and later:** not started. There is no telemetry export, load generator, fault injection, or UI yet.
 
 See [docs/roadmap.md](docs/roadmap.md) for milestone boundaries and acceptance criteria.
 
 ## What exists today
 
-- **Orders API** (`apps/orders-api`): Fastify service with `GET /healthz` and `GET /readyz` on port 3000.
-- **Order worker** (`apps/worker`): polls Postgres and claims `pending` orders, moving them to `processing`. It has health endpoints on port 3001.
-- **Database package** (`packages/db`): SQL migrations, migration runner, pool factory, readiness ping, and the order claim query.
-- **Docker Compose:** Postgres 16, a one-shot `migrate` service, and both apps with health checks.
-- **CI:** a GitHub Actions workflow that runs format check, lint, typecheck, migrations, and tests.
+- **Orders API** (`apps/orders-api`, port 3000):
+  - `GET /products`, with cursor pagination by SKU;
+  - `POST /orders`, with optional `Idempotency-Key` support;
+  - `GET /orders/:id`;
+  - `GET /healthz` and `GET /readyz`.
+- **Order worker** (`apps/worker`, health on port 3001):
+  - claims orders only for free processing slots;
+  - reserves stock and charges through the in-process payment simulator;
+  - retries unknown outcomes, reconciles with a lookup that can void, and parks unresolved orders in `payment_unknown`;
+  - shuts down without unsafe writes.
+- **Database package** (`packages/db`): migrations, the deterministic seed catalog of 1,000 products, and all order SQL. The transition trigger and constraints enforce the order lifecycle.
+- **Docker Compose:** Postgres 16, one-shot `migrate` and `seed` services, and both apps with health checks.
+- **CI:** GitHub Actions runs format check, lint, typecheck, migrations, seed, and the test suite with its coverage gate.
+
+The lifecycle, processing protocol, and API contracts are specified in [docs/prompts/m2-design.md](docs/prompts/m2-design.md) and summarized in [ADR 0005](docs/decisions/0005-order-processing-protocol.md).
 
 ## Planned
 
-- **M2:** catalog and order endpoints, plus inventory reservation and simulated payment in the worker.
 - **M3:** OpenTelemetry traces, metrics, and logs, collected locally.
 - **M4:** a deterministic load generator.
 - **M5:** seeded fault scenarios that produce incident bundles with ground truth.
@@ -39,15 +48,27 @@ No cloud accounts, API keys, or LLMs are required.
 ```sh
 cp .env.example .env
 pnpm install
-
-# Full stack in containers
 docker compose up -d --build --wait
-curl localhost:3000/readyz      # {"status":"ready"}
-curl localhost:3001/readyz      # {"status":"ready"}
 
-# Or run the apps on the host against the Compose database
+curl 'localhost:3000/products?limit=3'
+curl -i -X POST localhost:3000/orders -H 'content-type: application/json' \
+  -d '{"items":[{"sku":"SKU-00042","quantity":2}],"paymentMethod":"pm_card_ok"}'
+curl localhost:3000/orders/<id from the Location header>
+```
+
+The `paymentMethod` field chooses the simulated outcome:
+
+- `pm_card_ok` is approved, and the order is `paid` within about a second.
+- `pm_card_declined` fails the order with `payment_declined`.
+- `pm_card_unavailable` is retried 3 times, then voided, so the order fails with `max_attempts_exceeded`.
+
+Every 100th SKU has a stock of 3, so `out_of_stock` is easy to trigger.
+
+To run the apps on the host against the Compose database instead:
+
+```sh
 docker compose up -d --wait postgres
-pnpm build && pnpm db:migrate
+pnpm build && pnpm db:migrate && pnpm db:seed
 pnpm dev
 ```
 
@@ -61,16 +82,20 @@ pnpm dev
 | `pnpm typecheck`                    | Type-check source and tests.                                               |
 | `pnpm format` / `pnpm format:check` | Apply or check Prettier formatting.                                        |
 | `pnpm db:migrate`                   | Apply pending migrations to `DATABASE_URL`.                                |
+| `pnpm db:seed`                      | Insert the 1,000-product catalog. Existing SKUs are never changed.         |
 | `pnpm test`                         | Run unit and integration tests. Requires Postgres and `TEST_DATABASE_URL`. |
+| `pnpm test:coverage`                | Run the tests with the per-module 80% line coverage gate, as CI does.      |
+
+Worker settings, such as concurrency, timeouts, retry limits, and backoff, are documented in `.env.example`. The worker refuses to start with an unsafe combination, for example a claim timeout shorter than 1.5 times its processing budget.
 
 ## Layout
 
 ```
-apps/orders-api      HTTP service
-apps/worker          order-processing worker
-packages/db          migrations, runner, pool, data access
+apps/orders-api      HTTP API: routes, validation, pricing
+apps/worker          slot-based loop, processor, payment simulator, shutdown
+packages/db          migrations, seed, and all order data access
 infra/postgres/init  creates the commerce_test database on first start
-docs/                architecture, roadmap, ADRs, prompts
+docs/                architecture, roadmap, ADRs, design and prompts
 ```
 
 ## Documentation
@@ -78,4 +103,5 @@ docs/                architecture, roadmap, ADRs, prompts
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [Decision records](docs/decisions/)
+- [M2 design](docs/prompts/m2-design.md)
 - [Engineering rules](CLAUDE.md)

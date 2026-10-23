@@ -33,7 +33,7 @@ A small, observable e-commerce backend whose real job is to produce realistic, r
 
 ## Workflow
 
-- Before finishing a change, run `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm test`. Do not claim success if any fail. Tests need the Compose Postgres running.
+- Before finishing a change, run `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm test:coverage`, which CI also runs. Do not claim success if any fail. Tests need the Compose Postgres running.
 - New behavior needs tests. New fault scenarios need a test proving they trigger and a test proving they are off by default.
 - Record significant decisions as ADRs in `docs/decisions/`. Update `docs/roadmap.md` and the README status when a milestone's status changes.
 - Do not commit secrets, generated telemetry, or incident bundles. Use `.env.example` for configuration templates.

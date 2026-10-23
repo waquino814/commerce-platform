@@ -36,6 +36,16 @@ services:
         condition: service_healthy
     restart: 'no'
 
+  seed:
+    <<: *app
+    command: ['node', 'packages/db/dist/cli/seed.js']
+    environment:
+      DATABASE_URL: *database-url
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: 'no'
+
   orders-api:
     <<: *app
     command: ['node', 'apps/orders-api/dist/main.js']
@@ -46,7 +56,7 @@ services:
     ports:
       - '3000:3000'
     depends_on:
-      migrate:
+      seed:
         condition: service_completed_successfully
     healthcheck:
       test:
@@ -70,7 +80,7 @@ services:
     ports:
       - '3001:3001'
     depends_on:
-      migrate:
+      seed:
         condition: service_completed_successfully
     healthcheck:
       test:

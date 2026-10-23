@@ -18,5 +18,21 @@ export default defineConfig({
     // Integration tests share one database, so files run one at a time.
     fileParallelism: false,
     testTimeout: 15_000,
+    coverage: {
+      provider: 'v8',
+      // Criterion 13: lifecycle, pass selection, backoff, pricing, capacity, processor,
+      // reconciliation, shutdown and simulator modules, each at 80% line coverage or more.
+      include: [
+        'apps/worker/src/lifecycle.ts',
+        'apps/worker/src/loop.ts',
+        'apps/worker/src/processor.ts',
+        'apps/worker/src/pass-context.ts',
+        'apps/worker/src/shutdown.ts',
+        'apps/worker/src/payment/simulator.ts',
+        'apps/orders-api/src/pricing.ts',
+      ],
+      reporter: ['text', 'json-summary'],
+      thresholds: { lines: 80, perFile: true },
+    },
   },
 });

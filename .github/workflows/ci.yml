@@ -37,4 +37,5 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm db:migrate
-      - run: pnpm test
+      - run: pnpm db:seed
+      - run: pnpm test:coverage

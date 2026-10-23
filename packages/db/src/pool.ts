@@ -4,10 +4,15 @@ export interface PoolConfig {
   connectionString: string;
   /** Upper bound for acquiring a connection, so callers fail fast when Postgres is down. */
   connectionTimeoutMillis?: number;
+  /** Server-side `statement_timeout` for every connection. It also bounds lock waits. */
+  statementTimeoutMillis?: number;
   max?: number;
 }
 
 export type Pool = pg.Pool;
+export type PoolClient = pg.PoolClient;
+/** Anything that can run a single statement: a pool or a checked-out client. */
+export type Queryable = pg.Pool | pg.PoolClient;
 
 /**
  * Creates a connection pool. `onError` receives errors from idle clients, for example when
@@ -18,6 +23,9 @@ export function createPool(config: PoolConfig, onError: (err: Error) => void): P
     connectionString: config.connectionString,
     connectionTimeoutMillis: config.connectionTimeoutMillis ?? 2000,
     max: config.max ?? 10,
+    ...(config.statementTimeoutMillis === undefined
+      ? {}
+      : { statement_timeout: config.statementTimeoutMillis }),
   });
   pool.on('error', onError);
   return pool;
