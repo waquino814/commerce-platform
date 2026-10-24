@@ -38,3 +38,18 @@ A small, observable e-commerce backend whose real job is to produce realistic, r
 - Record significant decisions as ADRs in `docs/decisions/`. Update `docs/roadmap.md` and the README status when a milestone's status changes.
 - Do not commit secrets, generated telemetry, or incident bundles. Use `.env.example` for configuration templates.
 - Keep docs concise and consistent with each other. If code and docs disagree, fix one in the same change.
+
+## Milestone workflow and Git safety
+
+- Treat `docs/roadmap.md`, the current milestone design, and relevant ADRs as the source of truth for scope and acceptance criteria.
+- Work on one milestone at a time. Do not expand scope or change earlier milestone behavior without explicit approval.
+- Before implementation, inspect the current Git state and relevant documentation. Preserve unrelated, pre-existing, staged, and uncommitted changes.
+- Prefer the smallest change that satisfies the approved acceptance criteria. Explain material design changes and new dependencies before proceeding.
+- Before finishing, report changed files, acceptance criteria covered, checks actually run, results, and unresolved risks. Never claim a check passed unless it ran successfully.
+- Before staging, show the proposed file set and diff summary. Stage only files belonging to the approved milestone. Never stage unrelated changes.
+- Never stage, commit, or push without explicit user approval for that specific action. Approval to stage does not authorize committing; approval to commit does not authorize pushing.
+- Do not run live E2E scripts that mutate data, destructive commands, or operations with external side effects without explicit approval. Inspect the script and explain relevant side effects first.
+- After pushing a milestone, verify the GitHub Actions result before marking the milestone complete. Distinguish completed checks from pending verification.
+- Keep prompts and reports concise. Do not repeat completed reviews or checks unless relevant code, configuration, or documentation has changed.
+- For read-only review or planning tasks, do not modify files or run tests unless explicitly authorized.
+
