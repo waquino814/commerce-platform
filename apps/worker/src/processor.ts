@@ -1,5 +1,12 @@
 import * as db from '@commerce/db';
-import { creationLink, markSpanError, withSpan, type Span } from '@commerce/telemetry';
+import {
+  createWorkerMetrics,
+  creationLink,
+  markSpanError,
+  withSpan,
+  type Span,
+  type WorkerMetrics,
+} from '@commerce/telemetry';
 import type { ClaimedOrder, Fence, Pool } from '@commerce/db';
 import type { FastifyBaseLogger } from 'fastify';
 import {
@@ -46,6 +53,10 @@ export interface ProcessorDeps {
   registry: PassRegistry;
   store?: OrderStore;
   hooks?: ProcessorHooks;
+  /** M3c pass and payment metrics. Defaults to the global meter, a no-op when telemetry is off. */
+  metrics?: WorkerMetrics;
+  /** Monotonic milliseconds, for payment call durations only. Never affects an outcome. */
+  monotonicNow?: () => number;
 }
 
 export type PassOutcome =
@@ -72,6 +83,8 @@ export function createProcessor(deps: ProcessorDeps): Processor {
   const { pool, provider, limits, registry } = deps;
   const store: OrderStore = deps.store ?? db;
   const hooks = deps.hooks ?? {};
+  const metrics = deps.metrics ?? createWorkerMetrics();
+  const monotonicNow = deps.monotonicNow ?? (() => performance.now());
 
   async function step(ctx: PassContext, name: Step): Promise<void> {
     ctx.throwIfAborted();
@@ -273,6 +286,7 @@ export function createProcessor(deps: ProcessorDeps): Processor {
     });
     span.setAttribute('order.pass.outcome', outcome);
     if (outcome === 'error' || outcome === 'aborted') markSpanError(span, `pass ${outcome}`);
+    metrics.passCompleted(pass, outcome);
     return outcome;
   }
 
@@ -307,6 +321,9 @@ export function createProcessor(deps: ProcessorDeps): Processor {
    * `payment.result` and `payment.replayed`. An unknown outcome is not an error: it sets
    * `payment.result = "error"` and adds a `payment.outcome_unknown` event to the pass span.
    * The payment reference is never recorded. An abort still propagates.
+   *
+   * M3c: the call is also counted and timed, with `replayed = false` for an unknown outcome. A
+   * call interrupted by shutdown before a result is known is not counted.
    */
   async function providerCall(
     ctx: PassContext,
@@ -314,16 +331,31 @@ export function createProcessor(deps: ProcessorDeps): Processor {
     name: 'payment.charge' | 'payment.lookup_or_void',
     call: () => Promise<ProviderResult>,
   ): Promise<{ ok: true; result: ProviderResult } | { ok: false; err: unknown }> {
+    const operation = name === 'payment.charge' ? 'charge' : 'lookup_or_void';
     return withSpan(name, {}, async (span) => {
+      const startedAt = monotonicNow();
+      const durationS = () => (monotonicNow() - startedAt) / 1000;
       try {
         const result = await ctx.callProvider(call, deps.paymentTimeoutMs);
         span.setAttributes({
           'payment.result': result.outcome,
           'payment.replayed': result.replayed,
         });
+        metrics.paymentCall({
+          operation,
+          result: result.outcome,
+          replayed: result.replayed,
+          durationS: durationS(),
+        });
         return { ok: true as const, result };
       } catch (err) {
         if (err instanceof PassAbortedError) throw err;
+        metrics.paymentCall({
+          operation,
+          result: 'error',
+          replayed: false,
+          durationS: durationS(),
+        });
         span.setAttribute('payment.result', 'error');
         pass.addEvent('payment.outcome_unknown', {
           'payment.operation': name.slice('payment.'.length),

@@ -1,6 +1,9 @@
 import { ConfigError, parseEnv } from '@commerce/db/config';
 import { z } from 'zod';
 
+/** `METRICS_SAMPLE_INTERVAL_MS` when unset; also the disabled handle's value. */
+export const DEFAULT_METRICS_SAMPLE_INTERVAL_MS = 5000;
+
 const ms = (min: number) => z.coerce.number().int().min(min).max(600_000);
 /** Treats an empty variable as unset, so `OTEL_EXPORTER_OTLP_ENDPOINT=` disables telemetry. */
 const optional = <T extends z.ZodType>(schema: T) =>
@@ -17,7 +20,7 @@ const schema = z.object({
   OTEL_BSP_SCHEDULE_DELAY: ms(100).default(1000),
   OTEL_METRIC_EXPORT_INTERVAL: ms(1000).default(5000),
   OTEL_METRIC_EXPORT_TIMEOUT: ms(500).default(3000),
-  METRICS_SAMPLE_INTERVAL_MS: ms(1000).default(5000),
+  METRICS_SAMPLE_INTERVAL_MS: ms(1000).default(DEFAULT_METRICS_SAMPLE_INTERVAL_MS),
 });
 
 export interface TelemetryConfig {
@@ -27,6 +30,8 @@ export interface TelemetryConfig {
   endpoint: string | null;
   serviceName: string;
   serviceInstanceId: string;
+  /** Resource `service.version`, from the app's package.json. */
+  serviceVersion: string;
   exporterTimeoutMs: number;
   spanScheduleDelayMs: number;
   metricExportIntervalMs: number;
@@ -41,7 +46,7 @@ export interface TelemetryConfig {
  */
 export function loadTelemetryConfig(
   env: NodeJS.ProcessEnv,
-  defaults: { serviceName: string; serviceInstanceId: string },
+  defaults: { serviceName: string; serviceInstanceId: string; serviceVersion: string },
 ): TelemetryConfig {
   const p = parseEnv(schema, env);
   if (p.OTEL_METRIC_EXPORT_INTERVAL < p.OTEL_METRIC_EXPORT_TIMEOUT) {
@@ -56,6 +61,7 @@ export function loadTelemetryConfig(
     endpoint,
     serviceName: p.OTEL_SERVICE_NAME ?? defaults.serviceName,
     serviceInstanceId: p.OTEL_SERVICE_INSTANCE_ID ?? defaults.serviceInstanceId,
+    serviceVersion: defaults.serviceVersion,
     exporterTimeoutMs: p.OTEL_EXPORTER_OTLP_TIMEOUT,
     spanScheduleDelayMs: p.OTEL_BSP_SCHEDULE_DELAY,
     metricExportIntervalMs: p.OTEL_METRIC_EXPORT_INTERVAL,

@@ -5,7 +5,7 @@ import {
   type Pool,
   type RequeuePolicy,
 } from '@commerce/db';
-import { recordSweep } from '@commerce/telemetry';
+import { recordSweep, type WorkerMetrics } from '@commerce/telemetry';
 import type { FastifyBaseLogger } from 'fastify';
 import type { PassRegistry } from './pass-context.js';
 
@@ -28,14 +28,18 @@ export type ClaimReleaser = (claims: Fence[]) => Promise<ReleaseResult>;
  * root span with one `order.claim_released` child per released or unconfirmed order, linked to its
  * creation trace. Contexts are read synchronously on entry, while the aborted passes are still in
  * the registry. Tracing never changes the returned result.
+ *
+ * M3c: when `metrics` is given, released and unconfirmed orders are also counted, in memory, before
+ * the result is returned. Metrics never change the result either.
  */
 export function createClaimReleaser(
   pool: Pool,
   policy: RequeuePolicy,
   logger: FastifyBaseLogger,
   traceContextOf?: (orderId: string) => string | null,
+  metrics?: WorkerMetrics,
 ): ClaimReleaser {
-  const release: ClaimReleaser = async (claims) => {
+  const releaseOnly: ClaimReleaser = async (claims) => {
     if (claims.length === 0) return { released: [], unconfirmed: [] };
     try {
       const client = await pool.connect();
@@ -57,6 +61,14 @@ export function createClaimReleaser(
       return { released: [], unconfirmed: claims.map((c) => c.orderId) };
     }
   };
+  const release: ClaimReleaser = metrics
+    ? async (claims) => {
+        const result = await releaseOnly(claims);
+        metrics.claimsReleased('released', result.released.length);
+        metrics.claimsReleased('unconfirmed', result.unconfirmed.length);
+        return result;
+      }
+    : releaseOnly;
   if (!traceContextOf) return release;
 
   return async (claims) => {

@@ -2,7 +2,7 @@ import { ConfigError } from '@commerce/db';
 import { describe, expect, it } from 'vitest';
 import { loadTelemetryConfig } from '../src/config.js';
 
-const defaults = { serviceName: 'worker', serviceInstanceId: 'host-1' };
+const defaults = { serviceName: 'worker', serviceInstanceId: 'host-1', serviceVersion: '1.2.3' };
 
 describe('loadTelemetryConfig (criteria 1 and 2)', () => {
   it('is disabled without an endpoint, with documented defaults', () => {
@@ -11,6 +11,7 @@ describe('loadTelemetryConfig (criteria 1 and 2)', () => {
       endpoint: null,
       serviceName: 'worker',
       serviceInstanceId: 'host-1',
+      serviceVersion: '1.2.3',
       exporterTimeoutMs: 3000,
       spanScheduleDelayMs: 1000,
       metricExportIntervalMs: 5000,

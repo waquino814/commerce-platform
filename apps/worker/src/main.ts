@@ -10,6 +10,7 @@ import { createClaimRecoverer } from './recovery.js';
 import { createPaymentSimulator } from './payment/simulator.js';
 import { createProcessor } from './processor.js';
 import { createClaimReleaser, DRAIN_DEADLINE_MS, shutdownWorker } from './shutdown.js';
+import { startWorkerMetrics } from './worker-metrics.js';
 
 /** M1 hard deadline. The protocol finishes well before it: drain 7 s plus a 500 ms release. */
 const HARD_SHUTDOWN_DEADLINE_MS = 8000;
@@ -51,6 +52,19 @@ async function main(): Promise<void> {
   );
 
   const registry = new PassRegistry();
+  // M3c metrics. With telemetry off the meter is a no-op, and the metrics pool and order-status
+  // sampler are not created at all.
+  const telemetry = getActiveTelemetry();
+  const workerTelemetry = startWorkerMetrics({
+    enabled: telemetry.enabled,
+    sampleIntervalMs: telemetry.metricsSampleIntervalMs,
+    databaseUrl: config.databaseUrl,
+    logger,
+    workerPool: pool,
+    simulatorPool,
+    inflight: () => registry.size,
+  });
+  const { metrics } = workerTelemetry;
   const provider = createPaymentSimulator({
     pool: simulatorPool,
     logger,
@@ -63,6 +77,7 @@ async function main(): Promise<void> {
     limits: config.limits,
     paymentTimeoutMs: config.paymentTimeoutMs,
     registry,
+    metrics,
   });
   const policy = {
     maxReconciliationAttempts: config.limits.maxReconciliationAttempts,
@@ -77,6 +92,7 @@ async function main(): Promise<void> {
       recover: createClaimRecoverer({
         pool,
         logger,
+        metrics,
         params: {
           ...policy,
           claimTimeoutMs: config.claimTimeoutMs,
@@ -103,6 +119,7 @@ async function main(): Promise<void> {
       logger.error('hard shutdown deadline exceeded, forcing exit');
       process.exit(1);
     }, HARD_SHUTDOWN_DEADLINE_MS).unref();
+    workerTelemetry.stopSampler();
 
     shutdownWorker({
       stopLoop: () => {
@@ -116,6 +133,7 @@ async function main(): Promise<void> {
         policy,
         logger,
         (orderId) => registry.get(orderId)?.order.traceContext ?? null,
+        metrics,
       ),
       logger,
     })
@@ -129,9 +147,10 @@ async function main(): Promise<void> {
             await pool.end();
             // A provider call abandoned at the deadline may still hold a simulator connection.
             await Promise.race([simulatorPool.end(), sleep(300)]);
+            await workerTelemetry.closeMetricsPool();
             logger.info({ exitCode: result.exitCode }, 'shutdown complete');
           },
-          telemetry: getActiveTelemetry(),
+          telemetry,
           deadlineAt,
           exit: (code) => process.exit(code),
           onCleanupError: (err) => {

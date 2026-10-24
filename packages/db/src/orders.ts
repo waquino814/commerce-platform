@@ -676,3 +676,22 @@ export async function createOrder(
   if (!order) throw new Error(`order ${orderId} not found after insert`);
   return { kind: 'created', order };
 }
+
+/**
+ * Counts orders by status for the worker's order-status sampler (M3c). Every status is present,
+ * with 0 for statuses that have no orders. Read-only; it takes no locks beyond a plain read.
+ */
+export async function countOrdersByStatus(db: Queryable): Promise<Record<OrderStatus, number>> {
+  const result = await db.query<{ status: OrderStatus; count: string }>(
+    'SELECT status, count(*) AS count FROM orders GROUP BY status',
+  );
+  const counts: Record<OrderStatus, number> = {
+    pending: 0,
+    processing: 0,
+    paid: 0,
+    failed: 0,
+    payment_unknown: 0,
+  };
+  for (const row of result.rows) counts[row.status] = Number(row.count);
+  return counts;
+}

@@ -1,6 +1,6 @@
 # M3 design: observability
 
-Status: design approved. The M3a spike is complete; see "Spike outcome". **M3a is done: implemented in commit `9a73939`, reviewed, and green in GitHub Actions.** **M3b is implemented and verified locally, pending review and the GitHub Actions run.** M3c has not started.
+Status: design approved. The M3a spike is complete; see "Spike outcome". **M3a is done: implemented in commit `9a73939`, reviewed, and green in GitHub Actions.** **M3b is implemented and verified locally, pending review and the GitHub Actions run.** **M3c is implemented and verified locally, pending review and the GitHub Actions run.**
 
 ## Scope
 
@@ -169,6 +169,16 @@ The collector's exporter maps `service.name` to the `job` label and `service.ins
 **`honor_labels: true` is required** on the Prometheus scrape job. Without it, Prometheus's own scrape labels win, and the series show up as `job="otel-collector"` and `instance="otel-collector:8889"`, with the real values moved to `exported_job` and `exported_instance`. The spike observed both behaviors on Prometheus v3.15.0. With it, the series carry, for example, `job="worker"` and `instance="worker-1"`.
 
 `commerce.orders` is global state, so every worker reports the same counts. Query it with `max by (order_status) (commerce_orders)`, not `sum`.
+
+**Decisions made while building M3c,** approved by the repository owner:
+
+- **Instrumentation metrics are off.** The HTTP and pg auto-instrumentations get a no-op meter provider, and keep their traces. Their own metrics would reuse catalog names with labels outside the catalog: ten HTTP methods instead of five, server address and port, and pool names built from the connection string, which merge pools that share a database. The catalog's 11 instruments are recorded explicitly, and a smoke test under the production preload proves no other metric scope records.
+- **Interrupted payment calls are not counted.** A provider call cut off by shutdown before a result is known adds nothing to `commerce.payment.calls` or `commerce.payment.duration`. The pass itself is still counted, with outcome `aborted`.
+- **Unknown outcomes record `payment.replayed = false`.** An unknown outcome has no authoritative replay flag.
+- **`commerce.orders` and staleness.** A fresh sample reports all five statuses, zeros included. A missing sample, or one older than three intervals, reports nothing.
+- **Gauge temporality.** Counters, histograms and up-down counters are exported cumulatively. Observable gauges use delta temporality: a cumulative gauge keeps exporting its last value after its callback stops observing it, which would defeat the staleness rule. OTLP gauges carry no temporality, so the collector receives an ordinary gauge. The preference is set in code, so `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE` is never read.
+- **`service.version`** is read from each app's `package.json`, or `unknown` if it can't be read.
+- **Counters appear on first use.** `commerce_claims_recovered_total` and `commerce_claims_released_total` have no series until a claim is first recovered or released. Criterion 15 does not require them.
 
 ### Order-status sampler and the metrics pool
 
@@ -451,6 +461,8 @@ All three are multi-architecture images that include `amd64` and `arm64`.
     - API series carry `job="orders-api"` and `instance` equal to its `service.instance.id`;
     - no series of these metrics has an `exported_job` or `exported_instance` label.
 
+    **Automated, local only:** `pnpm e2e:prometheus` runs this check against the Compose stack, from `packages/telemetry/e2e/prometheus-series.js`. It also checks that catalog series carry no label keys outside the catalog. The API's instance defaults to its container hostname, so the script checks that it is set and is not the collector's, or compares it with `E2E_API_INSTANCE` when that is given. It is not a CI gate.
+
 ### Across M3
 
 16. [D] and [E2E] **Telemetry failures never disrupt orders.**
@@ -510,4 +522,5 @@ The M3a compatibility spike ran on 2026-10-23, outside the repository, with the 
 - **Deprecated tracing packages.** See "Dependencies" for why they are kept for M3, and the follow-up evaluation of `@opentelemetry/sdk-trace` 2.12.0.
 - **ESM hook regressions.** Automatic instrumentation depends on `import-in-the-middle` 3.5.2 and `require-in-the-middle` 8.0.1, which are resolved transitively. The M3a smoke test, criterion 5, runs the production `--import` entrypoint, so a regression is caught in CI.
 - **`module.register` deprecation.** `@types/node` 24 marks `node:module`'s `register()` as deprecated in favor of `module.registerHooks()`. The preload uses `register()`, because it is the path OpenTelemetry 0.223 documents and the spike tested. Node 24 prints no runtime deprecation warning for it, which the diag-wiring smoke test checks by requiring empty stderr. Moving to `registerHooks()` is a follow-up, to be evaluated together with the `sdk-trace` follow-up and re-tested with the same smoke tests.
+- **Stale gauges in Prometheus.** When the worker stops reporting `commerce.orders`, because its sample is stale, the collector's Prometheus exporter keeps serving the last value until its `metric_expiration`, 5 minutes by default. The worker itself stops exporting at once, as criterion 14 requires. Shortening the expiration would be a collector configuration change, outside M3c.
 - **Shutdown margin.** In M2's worst case, drain plus release plus cleanup can approach 8 s. The flush budget then shrinks to `skipped`, and the hard timer still applies as in M2.

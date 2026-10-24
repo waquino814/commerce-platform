@@ -5,6 +5,7 @@ import { completeShutdown } from '../src/shutdown.js';
 function telemetry(events: string[], flush: () => Promise<void>): TelemetryHandle {
   return {
     enabled: true,
+    metricsSampleIntervalMs: 5000,
     forceFlush: () => {
       events.push('flush-start');
       return flush();

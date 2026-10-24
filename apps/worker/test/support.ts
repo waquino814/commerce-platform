@@ -1,5 +1,6 @@
 import { claimDueOrders, type ClaimedOrder, type Pool } from '@commerce/db';
 import { pino, type Logger } from 'pino';
+import type { WorkerMetrics } from '@commerce/telemetry';
 import type { Limits } from '../src/lifecycle.js';
 import { PassRegistry } from '../src/pass-context.js';
 import {
@@ -202,6 +203,7 @@ export function makeWorker(
     store?: OrderStore;
     logger?: Logger;
     paymentTimeoutMs?: number;
+    metrics?: WorkerMetrics;
   } = {},
 ): TestWorker {
   const registry = new PassRegistry();
@@ -214,6 +216,7 @@ export function makeWorker(
     registry,
     ...(options.store ? { store: options.store } : {}),
     ...(options.hooks ? { hooks: options.hooks } : {}),
+    ...(options.metrics ? { metrics: options.metrics } : {}),
   });
   return { processor, registry };
 }

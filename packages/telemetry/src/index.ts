@@ -1,4 +1,8 @@
-export { loadTelemetryConfig, type TelemetryConfig } from './config.js';
+export {
+  DEFAULT_METRICS_SAMPLE_INTERVAL_MS,
+  loadTelemetryConfig,
+  type TelemetryConfig,
+} from './config.js';
 export {
   createRateLimitedDiagLogger,
   messageKind,
@@ -15,8 +19,41 @@ export {
   type TelemetryHandle,
 } from './handle.js';
 export { completeShutdown } from './shutdown.js';
-export { startTelemetry, BATCH_MAX_QUEUE_SIZE, type StartTelemetryOptions } from './sdk.js';
-export { registerTelemetry } from './register.js';
+export {
+  startTelemetry,
+  BATCH_MAX_QUEUE_SIZE,
+  selectMetricTemporality,
+  withMetricTemporality,
+  type StartTelemetryOptions,
+} from './sdk.js';
+export {
+  createApiMetrics,
+  createWorkerMetrics,
+  DURATION_BUCKETS_S,
+  HTTP_METHODS,
+  METER_NAME,
+  METRIC,
+  NOOP_METER_PROVIDER,
+  normalizeMethod,
+  observeInflight,
+  observeOrderStatuses,
+  observePools,
+  ORDER_STATUSES,
+  POOL_NAMES,
+  type ApiMetrics,
+  type OrderStatusCounts,
+  type OrderStatusLabel,
+  type PassOutcomeLabel,
+  type PassTypeLabel,
+  type PaymentOperation,
+  type PaymentResultLabel,
+  type PoolName,
+  type PoolStats,
+  type RecoveredStatus,
+  type ReleaseResultLabel,
+  type WorkerMetrics,
+} from './metrics.js';
+export { packageVersion, registerTelemetry } from './register.js';
 export {
   annotateActiveSpan,
   creationLink,

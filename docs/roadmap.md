@@ -64,7 +64,7 @@ The design and the 17 acceptance criteria are in `docs/prompts/m3-design.md`. Ea
 - Searching Jaeger by `order.id` finds the creation trace and every pass trace within 10 seconds.
 - Concurrent passes never share trace context.
 
-### M3c: Metrics
+### M3c: Metrics (implemented and verified locally; review and GitHub Actions run pending)
 
 - Request rate, error rate, latency histograms, orders by status, connection pool usage, and worker and payment counters are visible in Prometheus.
 - Labels are low cardinality, with no order ids or SKUs.

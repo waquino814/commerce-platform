@@ -1,12 +1,18 @@
+import { DEFAULT_METRICS_SAMPLE_INTERVAL_MS } from './config.js';
+
 /** What an app's main module needs from telemetry: flush and shut down at exit. */
 export interface TelemetryHandle {
   readonly enabled: boolean;
+  /** `METRICS_SAMPLE_INTERVAL_MS`, for the worker's order-status sampler. */
+  readonly metricsSampleIntervalMs: number;
   forceFlush(): Promise<void>;
   shutdown(): Promise<void>;
 }
 
 export const DISABLED_TELEMETRY: TelemetryHandle = Object.freeze({
   enabled: false,
+  // Unused while disabled (no sampler exists), but kept equal to the configuration default.
+  metricsSampleIntervalMs: DEFAULT_METRICS_SAMPLE_INTERVAL_MS,
   forceFlush: () => Promise.resolve(),
   shutdown: () => Promise.resolve(),
 });

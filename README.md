@@ -14,7 +14,10 @@ It is the first of two repositories in an AI engineering portfolio. The second, 
 - **M3b, Order trace correlation:** implemented and verified locally; review and the GitHub Actions run are pending.
   - Every worker pass is its own trace, linked to the order's creation trace.
   - Searching Jaeger by `order.id` finds the creation trace and every pass trace.
-- **M3c and later:** not started. Metrics, the load generator, fault injection and the UI are still to come.
+- **M3c, Metrics:** implemented and verified locally; review and the GitHub Actions run are pending.
+  - Request, connection-pool, order-status, worker-pass, payment and claim metrics reach Prometheus through the collector.
+  - Labels come from closed sets. Order ids, SKUs, raw URLs and payment references are never labels.
+- **M4 and later:** not started. The load generator, fault injection and the UI are still to come.
 
 See [docs/roadmap.md](docs/roadmap.md) for milestone boundaries and acceptance criteria.
 
@@ -94,8 +97,11 @@ pnpm dev
 | `pnpm test:coverage`                | Run the tests with the per-module 80% line coverage gate, as CI does.                         |
 | `pnpm test:smoke`                   | Run the telemetry smoke tests under the production `--import` preload.                        |
 | `pnpm e2e:jaeger`                   | Local only: check that an order's creation and pass traces are findable and linked in Jaeger. |
+| `pnpm e2e:prometheus`               | Local only: check that the metric catalog reaches Prometheus with the expected labels.        |
 
 `pnpm e2e:jaeger` needs the Compose stack running with telemetry (`docker compose up -d --build --wait`) and `DATABASE_URL` pointing at its Postgres, as the default `.env` does. It places one order and exits 1 with diagnostics if the traces are missing or unlinked. It is not part of CI.
+
+`pnpm e2e:prometheus` needs the same running stack. It places three orders, one rejected order and one request to an unknown URL, then waits up to 30 seconds for the expected series. It exits 1 with diagnostics if a series, a label, or the `job` and `instance` labels are wrong. It is not part of CI.
 
 Worker settings, such as concurrency, timeouts, retry limits, and backoff, are documented in `.env.example`. The worker refuses to start with an unsafe combination, for example a claim timeout shorter than 1.5 times its processing budget.
 

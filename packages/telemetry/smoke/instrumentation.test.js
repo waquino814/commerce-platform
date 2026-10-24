@@ -1,4 +1,5 @@
-// Criteria 4 and 5: automatic http and pg instrumentation under the production preload.
+// Criteria 4 and 5: automatic http and pg instrumentation under the production preload. M3c adds
+// criteria 4 and 13 for metrics: only the catalog records, never the auto-instrumentations.
 // Run by `pnpm test:smoke`:
 //   node --import ./packages/telemetry/smoke/memory-exporter.js \
 //        --import ./apps/orders-api/dist/telemetry.js packages/telemetry/smoke/instrumentation.test.js
@@ -11,6 +12,7 @@ import { pino } from 'pino';
 import { buildServer } from '../../../apps/orders-api/dist/server.js';
 
 const exporter = globalThis[Symbol.for('commerce.telemetry.testSpanExporter')];
+const reader = globalThis[Symbol.for('commerce.telemetry.testMetricReader')];
 const url = process.env.TEST_DATABASE_URL;
 assert.ok(url, 'TEST_DATABASE_URL must be set');
 const pool = createPool({ connectionString: url, max: 2 }, () => undefined);
@@ -115,5 +117,52 @@ test('production preload instruments http and pg with the agreed rules', async (
   const dbAttributes = JSON.stringify(db.map((s) => s.attributes));
   for (const value of ['SKU-00001', 'pm_card_ok', id]) {
     assert.ok(!dbAttributes.includes(value), `db span recorded parameter value ${value}`);
+  }
+});
+
+test('production preload: only the catalog records metrics, with the agreed labels', async () => {
+  // The previous test made one POST /orders, one GET /orders/:id and two probe requests.
+  // These add an unmatched URL and a pg query whose pool the pg instrumentation would observe.
+  assert.equal((await fetch(`${base}/no/such/path`)).status, 404);
+  await pool.query('SELECT 1 AS pool_activity');
+
+  const { resourceMetrics, errors } = await reader.collect();
+  assert.deepEqual(errors, []);
+  assert.equal(resourceMetrics.resource.attributes['service.name'], 'orders-api');
+  assert.equal(resourceMetrics.resource.attributes['service.version'], '0.0.0');
+
+  // Instrumentation isolation: no metrics from the http or pg instrumentations, which would reuse
+  // catalog names (http.server.request.duration, db.client.connection.count) with other labels.
+  const scopes = resourceMetrics.scopeMetrics.map((s) => s.scope.name);
+  assert.deepEqual(scopes, ['@commerce/telemetry'], `metric scopes: ${scopes.join(', ')}`);
+  const metrics = resourceMetrics.scopeMetrics.flatMap((s) => s.metrics);
+  assert.deepEqual(
+    metrics.map((m) => m.descriptor.name),
+    ['http.server.request.duration'],
+  );
+
+  const points = metrics[0].dataPoints.map((p) => ({ ...p.attributes, count: p.value.count }));
+  const key = (p) =>
+    `${p['http.request.method']} ${p['http.route'] ?? '-'} ${p['http.response.status_code']}`;
+  assert.deepEqual(points.map(key).sort(), [
+    'GET - 404',
+    'GET /orders/:id 200',
+    'POST /orders 201',
+  ]);
+  // Probes are never counted (criterion 4), and the 404 carries no route or raw URL.
+  assert.equal(
+    points.reduce((sum, p) => sum + p.count, 0),
+    3,
+  );
+  for (const p of points) {
+    assert.deepEqual(
+      Object.keys(p).sort(),
+      [
+        'count',
+        'http.request.method',
+        'http.response.status_code',
+        ...(p['http.route'] ? ['http.route'] : []),
+      ].sort(),
+    );
   }
 });

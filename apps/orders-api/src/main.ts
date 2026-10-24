@@ -1,5 +1,10 @@
 import { ConfigError, createPool } from '@commerce/db';
-import { completeShutdown, getActiveTelemetry, traceLogMixin } from '@commerce/telemetry';
+import {
+  completeShutdown,
+  getActiveTelemetry,
+  observePools,
+  traceLogMixin,
+} from '@commerce/telemetry';
 import { pino } from 'pino';
 import { loadConfig } from './config.js';
 import { buildServer } from './server.js';
@@ -16,6 +21,8 @@ async function main(): Promise<void> {
   const pool = createPool({ connectionString: config.databaseUrl }, (err) => {
     logger.warn({ err }, 'idle database client error');
   });
+  // M3c: connection metrics for the API's only pool. A no-op when telemetry is off.
+  observePools([{ name: 'orders-api', pool }]);
   const app = buildServer({ pool, logger });
 
   let shuttingDown = false;

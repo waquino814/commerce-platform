@@ -18,7 +18,8 @@
     "db:seed": "node --env-file-if-exists=.env packages/db/dist/cli/seed.js",
     "test:coverage": "vitest run --coverage",
     "test:smoke": "OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:9 node --env-file-if-exists=.env --import ./packages/telemetry/smoke/memory-exporter.js --import ./apps/orders-api/dist/telemetry.js packages/telemetry/smoke/instrumentation.test.js && node --env-file-if-exists=.env packages/telemetry/smoke/diag-wiring.test.js && node --env-file-if-exists=.env packages/telemetry/smoke/worker-preload.test.js",
-    "e2e:jaeger": "node --env-file-if-exists=.env packages/telemetry/e2e/jaeger-correlation.js"
+    "e2e:jaeger": "node --env-file-if-exists=.env packages/telemetry/e2e/jaeger-correlation.js",
+    "e2e:prometheus": "node packages/telemetry/e2e/prometheus-series.js"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

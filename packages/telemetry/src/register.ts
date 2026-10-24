@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { register } from 'node:module';
 import { ConfigError } from '@commerce/db/config';
+import type { MetricReader } from '@opentelemetry/sdk-metrics';
 import type { SpanExporter } from '@opentelemetry/sdk-trace-node';
 import { pino } from 'pino';
 import { loadTelemetryConfig } from './config.js';
@@ -7,6 +9,7 @@ import { DISABLED_TELEMETRY, setActiveTelemetry, type TelemetryHandle } from './
 import { startTelemetry } from './sdk.js';
 
 const TEST_SPAN_EXPORTER = Symbol.for('commerce.telemetry.testSpanExporter');
+const TEST_METRIC_READER = Symbol.for('commerce.telemetry.testMetricReader');
 
 /**
  * Body of each app's preload entrypoint, loaded with `node --import` before the app's main module.
@@ -17,6 +20,7 @@ const TEST_SPAN_EXPORTER = Symbol.for('commerce.telemetry.testSpanExporter');
 export function registerTelemetry(defaults: {
   serviceName: string;
   serviceInstanceId: string;
+  serviceVersion: string;
 }): TelemetryHandle {
   let config;
   try {
@@ -40,7 +44,12 @@ export function registerTelemetry(defaults: {
   register('@opentelemetry/instrumentation/hook.mjs', import.meta.url);
 
   const diagOut = pino({ base: { service: config.serviceName } });
-  const testExporter = (globalThis as { [TEST_SPAN_EXPORTER]?: SpanExporter })[TEST_SPAN_EXPORTER];
+  const seams = globalThis as {
+    [TEST_SPAN_EXPORTER]?: SpanExporter;
+    [TEST_METRIC_READER]?: MetricReader;
+  };
+  const testExporter = seams[TEST_SPAN_EXPORTER];
+  const testReader = seams[TEST_METRIC_READER];
   const handle = startTelemetry({
     config,
     emitDiag: (line) => {
@@ -50,7 +59,21 @@ export function registerTelemetry(defaults: {
       );
     },
     ...(testExporter ? { spanExporter: testExporter } : {}),
+    ...(testReader ? { metricReader: testReader } : {}),
   });
   setActiveTelemetry(handle);
   return handle;
+}
+
+/**
+ * Reads `version` from an app's package.json for the resource's `service.version`. Returns
+ * "unknown" when the file is missing or has no string version, so telemetry never blocks startup.
+ */
+export function packageVersion(packageJsonUrl: URL): string {
+  try {
+    const parsed = JSON.parse(readFileSync(packageJsonUrl, 'utf8')) as { version?: unknown };
+    return typeof parsed.version === 'string' && parsed.version !== '' ? parsed.version : 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }

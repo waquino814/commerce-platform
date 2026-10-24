@@ -1,6 +1,11 @@
 import { claimDueOrders, type ClaimedOrder } from '@commerce/db';
-import { completeShutdown, type TelemetryHandle } from '@commerce/telemetry';
+import { completeShutdown, createWorkerMetrics, type TelemetryHandle } from '@commerce/telemetry';
 import { context, trace } from '@opentelemetry/api';
+import {
+  MeterProvider,
+  PeriodicExportingMetricReader,
+  type PushMetricExporter,
+} from '@opentelemetry/sdk-metrics';
 import {
   BatchSpanProcessor,
   NodeTracerProvider,
@@ -29,13 +34,28 @@ import {
 } from './support.js';
 
 /**
- * Criterion 17: M2's shutdown scenarios 23, 24 and 35, re-run while every span export hangs.
+ * Criterion 17: M2's shutdown scenarios 23, 24 and 35, re-run while every span and metric export
+ * hangs.
  * The M2 tests themselves are unchanged; this proves telemetry cannot hold up order processing,
  * the shutdown protocol, or the exit code.
  */
 class HangingExporter implements SpanExporter {
   exports = 0;
   // Accepts every batch and never calls back, so each export hangs until its timeout.
+  export(): void {
+    this.exports += 1;
+  }
+  shutdown(): Promise<void> {
+    return new Promise(() => undefined);
+  }
+  forceFlush(): Promise<void> {
+    return new Promise(() => undefined);
+  }
+}
+
+/** M3c: the metric exporter hangs the same way. */
+class HangingMetricExporter implements PushMetricExporter {
+  exports = 0;
   export(): void {
     this.exports += 1;
   }
@@ -56,10 +76,27 @@ const provider = new NodeTracerProvider({
     new BatchSpanProcessor(exporter, { scheduledDelayMillis: 10, exportTimeoutMillis: HOUR }),
   ],
 });
+const metricExporter = new HangingMetricExporter();
+// The periodic timer never fires during a test; only the shutdown flush exports, and it hangs.
+const meterProvider = new MeterProvider({
+  readers: [
+    new PeriodicExportingMetricReader({
+      exporter: metricExporter,
+      exportIntervalMillis: HOUR,
+      exportTimeoutMillis: HOUR,
+    }),
+  ],
+});
+const workerMetrics = createWorkerMetrics(meterProvider.getMeter('test'));
 const telemetry: TelemetryHandle = {
   enabled: true,
-  forceFlush: () => provider.forceFlush(),
-  shutdown: () => provider.shutdown(),
+  metricsSampleIntervalMs: 5000,
+  forceFlush: async () => {
+    await Promise.all([provider.forceFlush(), meterProvider.forceFlush()]);
+  },
+  shutdown: async () => {
+    await Promise.all([provider.shutdown(), meterProvider.shutdown()]);
+  },
 };
 
 const pool = createTestPool();
@@ -86,7 +123,7 @@ beforeEach(async () => {
 });
 
 function startTracedWorker(provider_: PaymentProvider) {
-  const { processor, registry } = makeWorker(pool, provider_);
+  const { processor, registry } = makeWorker(pool, provider_, { metrics: workerMetrics });
   const tracer = trace.getTracer('test');
   const controller = new AbortController();
   const loopDone = runWorkerLoop<ClaimedOrder>(
@@ -118,7 +155,7 @@ function startTracedWorker(provider_: PaymentProvider) {
         loopDone,
         registry,
         drainDeadline,
-        release: createClaimReleaser(pool, POLICY, silentLogger),
+        release: createClaimReleaser(pool, POLICY, silentLogger, undefined, workerMetrics),
         logger: silentLogger,
       }),
   };
@@ -146,7 +183,7 @@ async function finish(exitCode: number): Promise<{ exitCodes: number[]; flush: s
   return { exitCodes, flush };
 }
 
-describe('shutdown with a hanging span exporter (criterion 17)', () => {
+describe('shutdown with hanging span and metric exporters (criterion 17)', () => {
   it('drains an in-flight order exactly as M2 criterion 23, then exits 0', async () => {
     const a = await placeOrder(pool, [{ sku: SKU, quantity: 1 }]);
     const fake = new FakeProvider();
@@ -167,6 +204,7 @@ describe('shutdown with a hanging span exporter (criterion 17)', () => {
     expect((await orderState(pool, a)).status).toBe('paid');
     expect(await finish(result.exitCode)).toEqual({ exitCodes: [0], flush: 'timed_out' });
     expect(exporter.exports).toBeGreaterThan(0);
+    expect(metricExporter.exports).toBeGreaterThan(0);
   });
 
   it('releases a charge recorded just before shutdown exactly as M2 criterion 24', async () => {
