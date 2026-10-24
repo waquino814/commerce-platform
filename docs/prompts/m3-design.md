@@ -1,6 +1,6 @@
 # M3 design: observability
 
-Status: design approved. The M3a spike is complete; see "Spike outcome". **M3a is implemented and verified locally, pending review and the GitHub Actions run.** **M3b is implemented and verified locally, pending review and the GitHub Actions run.** M3c has not started.
+Status: design approved. The M3a spike is complete; see "Spike outcome". **M3a is done: implemented in commit `9a73939`, reviewed, and green in GitHub Actions.** **M3b is implemented and verified locally, pending review and the GitHub Actions run.** M3c has not started.
 
 ## Scope
 

@@ -51,7 +51,7 @@ Verification: `pnpm test:coverage` runs the deterministic criteria against the C
 
 The design and the 17 acceptance criteria are in `docs/prompts/m3-design.md`. Each part has its own commit and CI run. There is no log export through the collector, no telemetry files, and no UI. Those belong to M5 and M7.
 
-### M3a: Telemetry foundation (implemented and verified locally; review and GitHub Actions run pending)
+### M3a: Telemetry foundation (done; GitHub Actions green for commit `9a73939`, confirmed by the repository owner)
 
 - A one-day compatibility spike for automatic `pg` and `http` instrumentation under ESM import hooks, with the pinned package set. If it fails, explicit database spans in `packages/db`, the approved fallback.
 - `packages/telemetry` exists, is off unless an OTLP endpoint is configured, and is used by both apps.

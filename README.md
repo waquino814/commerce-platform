@@ -8,7 +8,7 @@ It is the first of two repositories in an AI engineering portfolio. The second, 
 
 - **M0, Foundation, and M1, Skeleton, schema, and health:** done.
 - **M2, Working commerce flow:** done. All 36 acceptance criteria pass, and GitHub Actions is green for the M2 commit.
-- **M3a, Telemetry foundation:** implemented and verified locally; review and the GitHub Actions run are pending.
+- **M3a, Telemetry foundation:** done. All six M3a criteria pass, and GitHub Actions is green for commit `9a73939`.
   - With Compose, the apps send traces through an OpenTelemetry Collector to Jaeger at http://localhost:16686, and Prometheus runs at http://localhost:9090.
   - JSON logs carry `trace_id` and `span_id` inside a request.
 - **M3b, Order trace correlation:** implemented and verified locally; review and the GitHub Actions run are pending.
