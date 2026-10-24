@@ -7,11 +7,13 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/orders-api/package.json apps/orders-api/
 COPY apps/worker/package.json apps/worker/
 COPY packages/db/package.json packages/db/
+COPY packages/telemetry/package.json packages/telemetry/
 
 FROM base AS build
 RUN pnpm install --frozen-lockfile
 COPY tsconfig.base.json tsconfig.json ./
 COPY packages/db packages/db
+COPY packages/telemetry packages/telemetry
 COPY apps/orders-api apps/orders-api
 COPY apps/worker apps/worker
 RUN pnpm build
@@ -25,9 +27,11 @@ WORKDIR /app
 COPY --from=prod-deps /app/package.json ./
 COPY --from=prod-deps /app/node_modules node_modules
 COPY --from=prod-deps /app/packages/db packages/db
+COPY --from=prod-deps /app/packages/telemetry packages/telemetry
 COPY --from=prod-deps /app/apps/orders-api apps/orders-api
 COPY --from=prod-deps /app/apps/worker apps/worker
 COPY --from=build /app/packages/db/dist packages/db/dist
+COPY --from=build /app/packages/telemetry/dist packages/telemetry/dist
 COPY --from=build /app/apps/orders-api/dist apps/orders-api/dist
 COPY --from=build /app/apps/worker/dist apps/worker/dist
 COPY packages/db/migrations packages/db/migrations

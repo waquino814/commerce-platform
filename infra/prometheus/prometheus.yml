@@ -1,0 +1,11 @@
+# Prometheus v3.15.0. See docs/prompts/m3-design.md.
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: otel-collector
+    # Keep the collector's job (service.name) and instance (service.instance.id) labels instead of
+    # replacing them with this scrape job's own, which would move them to exported_job/instance.
+    honor_labels: true
+    static_configs:
+      - targets: ['otel-collector:8889']

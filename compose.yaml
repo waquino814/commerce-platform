@@ -6,6 +6,7 @@ x-app: &app
   stop_grace_period: 10s
 
 x-database-url: &database-url postgres://commerce:commerce@postgres:5432/commerce
+x-otlp-endpoint: &otlp-endpoint http://otel-collector:4318
 
 services:
   postgres:
@@ -48,9 +49,12 @@ services:
 
   orders-api:
     <<: *app
-    command: ['node', 'apps/orders-api/dist/main.js']
+    command:
+      ['node', '--import', './apps/orders-api/dist/telemetry.js', 'apps/orders-api/dist/main.js']
     environment:
       DATABASE_URL: *database-url
+      OTEL_EXPORTER_OTLP_ENDPOINT: *otlp-endpoint
+      OTEL_SERVICE_NAME: orders-api
       PORT: 3000
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
@@ -71,9 +75,11 @@ services:
 
   worker:
     <<: *app
-    command: ['node', 'apps/worker/dist/main.js']
+    command: ['node', '--import', './apps/worker/dist/telemetry.js', 'apps/worker/dist/main.js']
     environment:
       DATABASE_URL: *database-url
+      OTEL_EXPORTER_OTLP_ENDPOINT: *otlp-endpoint
+      OTEL_SERVICE_NAME: worker
       WORKER_ID: worker-1
       HEALTH_PORT: 3001
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -92,6 +98,45 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+
+  # Telemetry backends (M3). The apps deliberately do not depend_on them: telemetry is optional,
+  # and an app must start and stay healthy without it.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.162.0
+    command: ['--config=/etc/otelcol/config.yaml']
+    volumes:
+      - ./infra/otel/collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - '4318:4318'
+      - '13133:13133'
+    # Built FROM scratch: no shell, so no Compose healthcheck. Check from the host on :13133.
+
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    environment:
+      # The image sets this too; set explicitly so binding never depends on an image default.
+      JAEGER_LISTEN_HOST: 0.0.0.0
+    ports:
+      - '16686:16686'
+      - '13134:13133'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:13133/status']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    command: ['--config.file=/etc/prometheus/prometheus.yml']
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - '9090:9090'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:9090/-/ready']
+      interval: 2s
+      timeout: 2s
+      retries: 30
 
 volumes:
   postgres-data:

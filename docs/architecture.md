@@ -22,12 +22,12 @@ Pure order and pricing rules start inside the app that uses them. They move to a
 
 ## Runtime topology
 
-Compose services: `postgres`, one-shot `migrate` and `seed` services, `orders-api` on port 3000, and `worker` with health on port 3001. The apps start after the seed completes. Compose health checks call `/readyz`, so "healthy" means the service can reach Postgres. An init script in `infra/postgres/init` creates the `commerce_test` database used by integration tests. M3 adds `otel-collector`, `jaeger` for traces, and `prometheus` for metrics. Logs are JSON on stdout from M1 and are also exported through the collector from M3.
+Compose services: `postgres`, one-shot `migrate` and `seed` services, `orders-api` on port 3000, and `worker` with health on port 3001. The apps start after the seed completes. Compose health checks call `/readyz`, so "healthy" means the service can reach Postgres. An init script in `infra/postgres/init` creates the `commerce_test` database used by integration tests. M3 adds `otel-collector`, `jaeger` for traces, and `prometheus` for metrics. Logs stay JSON on stdout, with `trace_id` and `span_id` from M3. Exporting logs through the collector, and writing telemetry files, arrive with incident bundles in M5.
 
 ```
 loadgen -> orders-api -> postgres <- worker
                  \           |         /
-                  ---> otel-collector ---> jaeger, prometheus, log files   (M3+)
+                  ---> otel-collector ---> jaeger, prometheus   (M3+; log export and files in M5)
 ```
 
 ## Order processing
@@ -42,14 +42,14 @@ Background work is the processing of an order, so the order row is the unit of w
    - an unknown outcome retries with backoff.
 4. Once the charge budget is spent, passes only reconcile with `lookupOrVoid`. A recorded approval pays the order. A void fails it and releases stock. Lookup errors back off, then park the order in `payment_unknown` with its stock still reserved.
 5. Expired claims and shutdown releases return orders to `pending`, or to `payment_unknown` if parked. Neither changes counters or stock.
-6. From M3, trace context is stored with the order, so one trace spans the API request and the worker's processing.
+6. From M3, the order stores its creating request's trace context. Each worker pass starts its own trace, linked to that context, so a request and every pass on its order can be found together without keeping one trace open for hours. See `docs/prompts/m3-design.md`.
 
 Status transitions, enforced in code and by a trigger: `pending -> processing`, `payment_unknown -> processing`, and `processing -> paid | failed | pending | payment_unknown`.
 
 ## Extension points kept open in M1
 
 - **Telemetry:** each app has a single entrypoint that builds everything through factories. M3 preloads OpenTelemetry with `node --import`, so Fastify and `pg` can be auto-instrumented without restructuring.
-- **Logging:** both apps use pino through Fastify, so M3 only adds a `trace_id` field.
+- **Logging:** both apps use pino through Fastify, so M3 adds `trace_id` and `span_id` through a pino mixin that reads the active span.
 - **Resilience baseline:** the worker logs and retries database errors instead of crashing, and the pool handles idle-client errors. Outage incidents in M5 therefore show up as degraded behavior, not as crash loops.
 - **Faults:** the pool, payment simulator, clock, and random source are injected. M5 can wrap them without touching call sites.
 - **Determinism:** no hidden `Date.now()` or `Math.random()` in logic that affects order outcomes from M2 onward.

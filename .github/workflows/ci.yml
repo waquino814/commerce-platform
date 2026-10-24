@@ -39,3 +39,4 @@ jobs:
       - run: pnpm db:migrate
       - run: pnpm db:seed
       - run: pnpm test:coverage
+      - run: pnpm test:smoke

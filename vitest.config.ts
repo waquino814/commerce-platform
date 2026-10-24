@@ -7,10 +7,22 @@ if (existsSync('.env')) process.loadEnvFile('.env');
 
 export default defineConfig({
   resolve: {
-    alias: {
-      // Test against workspace source, so tests never depend on a stale build.
-      '@commerce/db': fileURLToPath(new URL('./packages/db/src/index.ts', import.meta.url)),
-    },
+    // Test against workspace source, so tests never depend on a stale build. Exact matches only:
+    // `@commerce/db/config` must not be rewritten as a prefix of `@commerce/db`.
+    alias: [
+      {
+        find: /^@commerce\/db\/config$/,
+        replacement: fileURLToPath(new URL('./packages/db/src/config.ts', import.meta.url)),
+      },
+      {
+        find: /^@commerce\/db$/,
+        replacement: fileURLToPath(new URL('./packages/db/src/index.ts', import.meta.url)),
+      },
+      {
+        find: /^@commerce\/telemetry$/,
+        replacement: fileURLToPath(new URL('./packages/telemetry/src/index.ts', import.meta.url)),
+      },
+    ],
   },
   test: {
     include: ['apps/*/test/**/*.test.ts', 'packages/*/test/**/*.test.ts'],
@@ -30,7 +42,10 @@ export default defineConfig({
         'apps/worker/src/shutdown.ts',
         'apps/worker/src/payment/simulator.ts',
         'apps/orders-api/src/pricing.ts',
+        // M3a. register.ts is the preload body, exercised by `pnpm test:smoke` instead.
+        'packages/telemetry/src/**/*.ts',
       ],
+      exclude: ['packages/telemetry/src/register.ts', 'packages/telemetry/src/index.ts'],
       reporter: ['text', 'json-summary'],
       thresholds: { lines: 80, perFile: true },
     },

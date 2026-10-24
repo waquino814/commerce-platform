@@ -20,4 +20,20 @@ export default tseslint.config(
     files: ['**/*.js'],
     ...tseslint.configs.disableTypeChecked,
   },
+  {
+    // Plain ESM smoke tests run directly by Node (packages/*/smoke). Declared here instead of
+    // adding a globals dependency.
+    files: ['packages/*/smoke/**/*.js'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        URL: 'readonly',
+      },
+    },
+  },
 );

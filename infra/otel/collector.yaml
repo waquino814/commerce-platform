@@ -1,0 +1,39 @@
+# OpenTelemetry Collector (contrib 0.162.0). See docs/prompts/m3-design.md.
+extensions:
+  health_check:
+    # Recent collectors default component endpoints to localhost; publish health to the host.
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  batch:
+    timeout: 200ms
+
+exporters:
+  # "otlp" is a deprecated alias in 0.162.0; use the explicit gRPC exporter name.
+  otlp_grpc/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_grpc/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]

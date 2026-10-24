@@ -8,7 +8,10 @@ It is the first of two repositories in an AI engineering portfolio. The second, 
 
 - **M0, Foundation, and M1, Skeleton, schema, and health:** done.
 - **M2, Working commerce flow:** implemented, and all 36 acceptance criteria pass locally. The GitHub Actions run for M2 has not been observed yet.
-- **M3 and later:** not started. There is no telemetry export, load generator, fault injection, or UI yet.
+- **M3a, Telemetry foundation:** implemented and verified locally; review and the GitHub Actions run are pending.
+  - With Compose, the apps send traces through an OpenTelemetry Collector to Jaeger at http://localhost:16686, and Prometheus runs at http://localhost:9090.
+  - JSON logs carry `trace_id` and `span_id` inside a request.
+- **M3b, M3c and later:** not started. Worker pass traces, metrics, the load generator, fault injection and the UI are still to come.
 
 See [docs/roadmap.md](docs/roadmap.md) for milestone boundaries and acceptance criteria.
 
@@ -85,6 +88,7 @@ pnpm dev
 | `pnpm db:seed`                      | Insert the 1,000-product catalog. Existing SKUs are never changed.         |
 | `pnpm test`                         | Run unit and integration tests. Requires Postgres and `TEST_DATABASE_URL`. |
 | `pnpm test:coverage`                | Run the tests with the per-module 80% line coverage gate, as CI does.      |
+| `pnpm test:smoke`                   | Run the telemetry smoke tests under the production `--import` preload.     |
 
 Worker settings, such as concurrency, timeouts, retry limits, and backoff, are documented in `.env.example`. The worker refuses to start with an unsafe combination, for example a claim timeout shorter than 1.5 times its processing budget.
 

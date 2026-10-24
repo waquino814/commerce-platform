@@ -1,8 +1,17 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/db" },
-    { "path": "apps/orders-api" },
-    { "path": "apps/worker" }
+    {
+      "path": "packages/db"
+    },
+    {
+      "path": "packages/telemetry"
+    },
+    {
+      "path": "apps/orders-api"
+    },
+    {
+      "path": "apps/worker"
+    }
   ]
 }

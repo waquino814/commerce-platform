@@ -45,11 +45,31 @@ Verification: `pnpm test:coverage` runs the deterministic criteria against the C
 
 ## M3: Observability
 
-- `packages/telemetry` exists and is used by both apps.
-- One trace links the HTTP request, its database queries, and the worker's processing of that order.
-- Request rate, error rate, latency histograms, pending order count, and pool usage are visible in Prometheus.
-- Every log line includes `trace_id` when one exists.
-- Traces appear in Jaeger within 10 seconds of the request.
+The design and the 17 acceptance criteria are in `docs/prompts/m3-design.md`. Each part has its own commit and CI run. There is no log export through the collector, no telemetry files, and no UI. Those belong to M5 and M7.
+
+### M3a: Telemetry foundation (implemented and verified locally; review and GitHub Actions run pending)
+
+- A one-day compatibility spike for automatic `pg` and `http` instrumentation under ESM import hooks, with the pinned package set. If it fails, explicit database spans in `packages/db`, the approved fallback.
+- `packages/telemetry` exists, is off unless an OTLP endpoint is configured, and is used by both apps.
+- HTTP and database spans. JSON logs on stdout carry `trace_id` and `span_id` only inside an active span.
+- The collector, Jaeger and Prometheus run in Compose at pinned versions, and their health endpoints answer.
+
+### M3b: Order trace correlation
+
+- Order creation stores its trace context. Every worker pass starts a new trace whose root span links to the order's creation trace. No trace stays open across retries, reconciliation, or `payment_unknown` rechecks.
+- Searching Jaeger by `order.id` finds the creation trace and every pass trace within 10 seconds.
+- Concurrent passes never share trace context.
+
+### M3c: Metrics
+
+- Request rate, error rate, latency histograms, orders by status, connection pool usage, and worker and payment counters are visible in Prometheus.
+- Labels are low cardinality, with no order ids or SKUs.
+- Order counts come from a dedicated one-connection metrics pool. Metric failures never affect order processing.
+
+### Across M3
+
+- Telemetry failures, including a stopped collector, never change order outcomes or health.
+- M2 behavior, tests and shutdown contract stay intact. The telemetry flush at shutdown is best effort and capped at 300 ms.
 
 ## M4: Load generation
 

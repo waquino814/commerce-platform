@@ -1,4 +1,5 @@
 import { ConfigError, createPool } from '@commerce/db';
+import { completeShutdown, getActiveTelemetry, traceLogMixin } from '@commerce/telemetry';
 import { pino } from 'pino';
 import { loadConfig } from './config.js';
 import { buildServer } from './server.js';
@@ -7,7 +8,11 @@ const SHUTDOWN_DEADLINE_MS = 8000;
 
 async function main(): Promise<void> {
   const config = loadConfig(process.env);
-  const logger = pino({ level: config.logLevel, base: { service: 'orders-api' } });
+  const logger = pino({
+    level: config.logLevel,
+    base: { service: 'orders-api' },
+    mixin: traceLogMixin,
+  });
   const pool = createPool({ connectionString: config.databaseUrl }, (err) => {
     logger.warn({ err }, 'idle database client error');
   });
@@ -18,21 +23,28 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info({ signal }, 'shutdown started');
+    const deadlineAt = Date.now() + SHUTDOWN_DEADLINE_MS;
     setTimeout(() => {
       logger.error('shutdown deadline exceeded, forcing exit');
       process.exit(1);
     }, SHUTDOWN_DEADLINE_MS).unref();
-    app
-      .close()
-      .then(() => pool.end())
-      .then(() => {
+    void completeShutdown({
+      exitCode: 0,
+      cleanup: async () => {
+        await app.close();
+        await pool.end();
         logger.info('shutdown complete');
-        process.exit(0);
-      })
-      .catch((err: unknown) => {
+      },
+      telemetry: getActiveTelemetry(),
+      deadlineAt,
+      exit: (code) => process.exit(code),
+      onCleanupError: (err) => {
         logger.error({ err }, 'shutdown failed');
-        process.exit(1);
-      });
+      },
+      onFlush: (result, budgetMs) => {
+        logger.debug({ result, budgetMs }, 'telemetry flush');
+      },
+    });
   };
   process.once('SIGTERM', shutdown);
   process.once('SIGINT', shutdown);

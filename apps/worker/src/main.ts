@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { claimDueOrders, ConfigError, createPool, recoverExpiredClaims } from '@commerce/db';
+import { completeShutdown, getActiveTelemetry, traceLogMixin } from '@commerce/telemetry';
 import { pino } from 'pino';
 import { loadConfig } from './config.js';
 import { buildHealthServer } from './health-server.js';
@@ -17,6 +18,7 @@ async function main(): Promise<void> {
   const logger = pino({
     level: config.logLevel,
     base: { service: 'worker', workerId: config.workerId },
+    mixin: traceLogMixin,
   });
   logger.info(
     { processingBudgetMs: config.processingBudgetMs, claimTimeoutMs: config.claimTimeoutMs },
@@ -94,6 +96,7 @@ async function main(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info({ signal }, 'shutdown started');
+    const deadlineAt = Date.now() + HARD_SHUTDOWN_DEADLINE_MS;
     setTimeout(() => {
       logger.error('hard shutdown deadline exceeded, forcing exit');
       process.exit(1);
@@ -109,14 +112,29 @@ async function main(): Promise<void> {
       release: createClaimReleaser(pool, policy, logger),
       logger,
     })
-      .then(async (result) => {
-        await health.close();
-        await pool.end();
-        // A provider call abandoned at the deadline may still hold a simulator connection.
-        await Promise.race([simulatorPool.end(), sleep(300)]);
-        logger.info({ exitCode: result.exitCode }, 'shutdown complete');
-        process.exit(result.exitCode);
-      })
+      .then((result) =>
+        // M2's protocol has decided the exit code. Telemetry only adds a bounded flush after
+        // cleanup and can never change that code (docs/prompts/m3-design.md, "Shutdown").
+        completeShutdown({
+          exitCode: result.exitCode,
+          cleanup: async () => {
+            await health.close();
+            await pool.end();
+            // A provider call abandoned at the deadline may still hold a simulator connection.
+            await Promise.race([simulatorPool.end(), sleep(300)]);
+            logger.info({ exitCode: result.exitCode }, 'shutdown complete');
+          },
+          telemetry: getActiveTelemetry(),
+          deadlineAt,
+          exit: (code) => process.exit(code),
+          onCleanupError: (err) => {
+            logger.error({ err }, 'shutdown failed');
+          },
+          onFlush: (flushResult, budgetMs) => {
+            logger.debug({ result: flushResult, budgetMs }, 'telemetry flush');
+          },
+        }),
+      )
       .catch((err: unknown) => {
         logger.error({ err }, 'shutdown failed');
         process.exit(1);
