@@ -19,6 +19,8 @@ export interface ClaimedOrder {
   claimedBy: string;
   claimedAt: Date;
   createdAt: Date;
+  /** W3C traceparent of the span that created the order, or null (M3b). */
+  traceContext: string | null;
 }
 
 /** Identifies the claim a write belongs to. Every worker write is fenced by both fields. */
@@ -41,6 +43,7 @@ interface ClaimedOrderRow {
   claimed_at: Date;
   created_at: Date;
   next_attempt_at: Date;
+  trace_context: string | null;
 }
 
 const FENCED = `id = $1 AND status = 'processing' AND processing_attempts = $2`;
@@ -60,6 +63,7 @@ function toClaimedOrder(row: ClaimedOrderRow): ClaimedOrder {
     claimedBy: row.claimed_by,
     claimedAt: row.claimed_at,
     createdAt: row.created_at,
+    traceContext: row.trace_context,
   };
 }
 
@@ -90,7 +94,7 @@ export async function claimDueOrders(
             )
   RETURNING id, status, total_cents, currency, payment_method, processing_attempts,
             charge_attempts, reconciliation_attempts, inventory_reserved_at,
-            claimed_by, claimed_at, created_at, next_attempt_at`,
+            claimed_by, claimed_at, created_at, next_attempt_at, trace_context`,
     [params.workerId, params.limit],
   );
   // RETURNING does not preserve the subquery's order. Dispatch oldest-due first, deterministically.
@@ -299,17 +303,31 @@ export interface RequeuePolicy {
   paymentUnknownRecheckMs: number;
 }
 
+export interface RecoveredClaim {
+  id: string;
+  status: OrderStatus;
+  processingAttempts: number;
+  /** W3C traceparent of the order's creation span, or null. */
+  traceContext: string | null;
+}
+
 /**
  * Returns expired claims to `pending`, or to `payment_unknown` for parked orders. Holds no token:
  * one statement re-checks expiry under `SKIP LOCKED`. Never touches counters or inventory.
  * The pending due time mirrors the worker's recovery backoff:
  * `min(retryBaseMs * 2^(processing_attempts - 1), retryMaxMs)`.
+ * Also returns each order's attempt count and creation trace context, for recovery tracing.
  */
-export async function recoverExpiredClaims(
+export async function recoverExpiredClaimsWithContext(
   db: Queryable,
   params: RequeuePolicy & { claimTimeoutMs: number; retryBaseMs: number; retryMaxMs: number },
-): Promise<{ id: string; status: OrderStatus }[]> {
-  const result = await db.query<{ id: string; status: OrderStatus }>(
+): Promise<RecoveredClaim[]> {
+  const result = await db.query<{
+    id: string;
+    status: OrderStatus;
+    processing_attempts: number;
+    trace_context: string | null;
+  }>(
     `UPDATE orders o
         SET status = CASE WHEN o.reconciliation_attempts >= $2 THEN 'payment_unknown' ELSE 'pending' END,
             next_attempt_at = now() + interval '1 millisecond' *
@@ -324,7 +342,7 @@ export async function recoverExpiredClaims(
                  AND claimed_at < now() - $1 * interval '1 millisecond'
                  FOR UPDATE SKIP LOCKED
             )
-  RETURNING o.id, o.status`,
+  RETURNING o.id, o.status, o.processing_attempts, o.trace_context`,
     [
       params.claimTimeoutMs,
       params.maxReconciliationAttempts,
@@ -333,7 +351,24 @@ export async function recoverExpiredClaims(
       params.retryMaxMs,
     ],
   );
-  return result.rows;
+  return result.rows.map((r) => ({
+    id: r.id,
+    status: r.status,
+    processingAttempts: r.processing_attempts,
+    traceContext: r.trace_context,
+  }));
+}
+
+/**
+ * M2 contract, unchanged: the same recovery, returning only `{ id, status }` per order.
+ * See recoverExpiredClaimsWithContext for the statement and its guarantees.
+ */
+export async function recoverExpiredClaims(
+  db: Queryable,
+  params: RequeuePolicy & { claimTimeoutMs: number; retryBaseMs: number; retryMaxMs: number },
+): Promise<{ id: string; status: OrderStatus }[]> {
+  const recovered = await recoverExpiredClaimsWithContext(db, params);
+  return recovered.map(({ id, status }) => ({ id, status }));
 }
 
 /**
@@ -513,6 +548,8 @@ export interface NewOrder {
   paymentMethod: PaymentMethod;
   idempotencyKey: string | null;
   requestHash: string;
+  /** W3C traceparent of the creating span (M3b). Stored only when a new order is inserted. */
+  traceContext?: string | null;
 }
 
 export type CreateOrderResult =
@@ -598,10 +635,17 @@ export async function createOrder(
       };
     });
     const inserted = await client.query<{ id: string }>(
-      `INSERT INTO orders (total_cents, currency, payment_method, idempotency_key, request_hash)
-       VALUES ($1, 'USD', $2, $3, $4)
+      `INSERT INTO orders (total_cents, currency, payment_method, idempotency_key, request_hash,
+                           trace_context)
+       VALUES ($1, 'USD', $2, $3, $4, $5)
        RETURNING id`,
-      [price(lines), input.paymentMethod, input.idempotencyKey, input.requestHash],
+      [
+        price(lines),
+        input.paymentMethod,
+        input.idempotencyKey,
+        input.requestHash,
+        input.traceContext ?? null,
+      ],
     );
     const id = inserted.rows[0]?.id;
     if (!id) throw new Error('order insert returned no id');

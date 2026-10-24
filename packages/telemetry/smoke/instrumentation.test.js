@@ -87,6 +87,17 @@ test('production preload instruments http and pg with the agreed rules', async (
   );
   assert.ok(!db.some((s) => queryText(s) === 'SELECT 1'), 'readiness ping must create no db span');
 
+  // Criterion 7 (M3b): the HTTP server span and order.create carry order.id, and the stored
+  // traceparent is order.create's context.
+  const create = spans.find((s) => s.name === 'order.create');
+  assert.ok(create, 'order.create span missing');
+  assert.equal(post.attributes['order.id'], id);
+  assert.equal(create.attributes['order.id'], id);
+  assert.equal(create.parentSpanContext?.spanId, post.spanContext().spanId);
+  const stored = await pool.query('SELECT trace_context FROM orders WHERE id = $1', [id]);
+  const { traceId, spanId } = create.spanContext();
+  assert.equal(stored.rows[0]?.trace_context, `00-${traceId}-${spanId}-01`);
+
   // Criterion 5: pg spans under the issuing span, none outside a span, no parameter values.
   const underPost = db.filter((s) => ancestors(s).includes('POST /orders'));
   assert.ok(

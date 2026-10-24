@@ -40,11 +40,18 @@ export function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<
 export class PassContext {
   private readonly controller = new AbortController();
   private readonly clients = new Set<PoolClient>();
+  /**
+   * Whether the order's stock is reserved: true if it was reserved when claimed, or once this
+   * pass's reservation commits. Used only for tracing (`order.inventory_released`).
+   */
+  inventoryReserved: boolean;
 
   constructor(
     readonly order: ClaimedOrder,
     private readonly pool: Pool,
-  ) {}
+  ) {
+    this.inventoryReserved = order.inventoryReservedAt !== null;
+  }
 
   get token(): number {
     return this.order.processingAttempts;
@@ -129,6 +136,11 @@ export class PassRegistry {
 
   get size(): number {
     return this.active.size;
+  }
+
+  /** The running pass for an order, if any. */
+  get(orderId: string): PassContext | undefined {
+    return this.active.get(orderId);
   }
 
   snapshot(): PassContext[] {

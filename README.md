@@ -11,7 +11,10 @@ It is the first of two repositories in an AI engineering portfolio. The second, 
 - **M3a, Telemetry foundation:** implemented and verified locally; review and the GitHub Actions run are pending.
   - With Compose, the apps send traces through an OpenTelemetry Collector to Jaeger at http://localhost:16686, and Prometheus runs at http://localhost:9090.
   - JSON logs carry `trace_id` and `span_id` inside a request.
-- **M3b, M3c and later:** not started. Worker pass traces, metrics, the load generator, fault injection and the UI are still to come.
+- **M3b, Order trace correlation:** implemented and verified locally; review and the GitHub Actions run are pending.
+  - Every worker pass is its own trace, linked to the order's creation trace.
+  - Searching Jaeger by `order.id` finds the creation trace and every pass trace.
+- **M3c and later:** not started. Metrics, the load generator, fault injection and the UI are still to come.
 
 See [docs/roadmap.md](docs/roadmap.md) for milestone boundaries and acceptance criteria.
 
@@ -78,18 +81,21 @@ pnpm dev
 
 ## Commands
 
-| Command                             | Purpose                                                                    |
-| ----------------------------------- | -------------------------------------------------------------------------- |
-| `pnpm build`                        | Compile all workspace projects with TypeScript project references.         |
-| `pnpm dev`                          | Run both apps in watch mode against workspace source.                      |
-| `pnpm lint`                         | Build types, then run type-aware ESLint.                                   |
-| `pnpm typecheck`                    | Type-check source and tests.                                               |
-| `pnpm format` / `pnpm format:check` | Apply or check Prettier formatting.                                        |
-| `pnpm db:migrate`                   | Apply pending migrations to `DATABASE_URL`.                                |
-| `pnpm db:seed`                      | Insert the 1,000-product catalog. Existing SKUs are never changed.         |
-| `pnpm test`                         | Run unit and integration tests. Requires Postgres and `TEST_DATABASE_URL`. |
-| `pnpm test:coverage`                | Run the tests with the per-module 80% line coverage gate, as CI does.      |
-| `pnpm test:smoke`                   | Run the telemetry smoke tests under the production `--import` preload.     |
+| Command                             | Purpose                                                                                       |
+| ----------------------------------- | --------------------------------------------------------------------------------------------- |
+| `pnpm build`                        | Compile all workspace projects with TypeScript project references.                            |
+| `pnpm dev`                          | Run both apps in watch mode against workspace source.                                         |
+| `pnpm lint`                         | Build types, then run type-aware ESLint.                                                      |
+| `pnpm typecheck`                    | Type-check source and tests.                                                                  |
+| `pnpm format` / `pnpm format:check` | Apply or check Prettier formatting.                                                           |
+| `pnpm db:migrate`                   | Apply pending migrations to `DATABASE_URL`.                                                   |
+| `pnpm db:seed`                      | Insert the 1,000-product catalog. Existing SKUs are never changed.                            |
+| `pnpm test`                         | Run unit and integration tests. Requires Postgres and `TEST_DATABASE_URL`.                    |
+| `pnpm test:coverage`                | Run the tests with the per-module 80% line coverage gate, as CI does.                         |
+| `pnpm test:smoke`                   | Run the telemetry smoke tests under the production `--import` preload.                        |
+| `pnpm e2e:jaeger`                   | Local only: check that an order's creation and pass traces are findable and linked in Jaeger. |
+
+`pnpm e2e:jaeger` needs the Compose stack running with telemetry (`docker compose up -d --build --wait`) and `DATABASE_URL` pointing at its Postgres, as the default `.env` does. It places one order and exits 1 with diagnostics if the traces are missing or unlinked. It is not part of CI.
 
 Worker settings, such as concurrency, timeouts, retry limits, and backoff, are documented in `.env.example`. The worker refuses to start with an unsafe combination, for example a claim timeout shorter than 1.5 times its processing budget.
 

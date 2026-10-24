@@ -128,6 +128,11 @@ function startTracedWorker(provider_: PaymentProvider) {
 async function finish(exitCode: number): Promise<{ exitCodes: number[]; flush: string }> {
   const exitCodes: number[] = [];
   let flush = '';
+  // Guarantee a span is still buffered when the flush starts, so the flush must call the hanging
+  // exporter. Without this, the 10 ms batch timer may already have handed every span to the
+  // (hanging) exporter, and flushing an empty buffer correctly reports "flushed". The flush runs
+  // in microtasks right after this line, before any timer can fire.
+  trace.getTracer('test').startSpan('pre-shutdown').end();
   await completeShutdown({
     exitCode,
     cleanup: () => Promise.resolve(),

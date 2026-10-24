@@ -5,6 +5,7 @@ import {
   type Pool,
   type RequeuePolicy,
 } from '@commerce/db';
+import { recordSweep } from '@commerce/telemetry';
 import type { FastifyBaseLogger } from 'fastify';
 import type { PassRegistry } from './pass-context.js';
 
@@ -22,13 +23,19 @@ export type ClaimReleaser = (claims: Fence[]) => Promise<ReleaseResult>;
 /**
  * Releases unfinished claims with one fenced statement that skips locked rows, then reads which
  * of the remaining claims are still held. Any error leaves every claim unconfirmed.
+ *
+ * M3b: when `traceContextOf` is given, the release is also recorded as one `worker.release_claims`
+ * root span with one `order.claim_released` child per released or unconfirmed order, linked to its
+ * creation trace. Contexts are read synchronously on entry, while the aborted passes are still in
+ * the registry. Tracing never changes the returned result.
  */
 export function createClaimReleaser(
   pool: Pool,
   policy: RequeuePolicy,
   logger: FastifyBaseLogger,
+  traceContextOf?: (orderId: string) => string | null,
 ): ClaimReleaser {
-  return async (claims) => {
+  const release: ClaimReleaser = async (claims) => {
     if (claims.length === 0) return { released: [], unconfirmed: [] };
     try {
       const client = await pool.connect();
@@ -49,6 +56,39 @@ export function createClaimReleaser(
       logger.error({ err }, 'claim release failed');
       return { released: [], unconfirmed: claims.map((c) => c.orderId) };
     }
+  };
+  if (!traceContextOf) return release;
+
+  return async (claims) => {
+    const startTime = Date.now();
+    const contexts = new Map(claims.map((c) => [c.orderId, traceContextOf(c.orderId)]));
+    const result = await release(claims);
+    const items = [
+      ...result.released.map((orderId) => ({ orderId, result: 'released' as const })),
+      ...result.unconfirmed.map((orderId) => ({ orderId, result: 'unconfirmed' as const })),
+    ];
+    const resultOf = new Map(items.map((i) => [i.orderId, i.result]));
+    recordSweep({
+      name: 'worker.release_claims',
+      childName: 'order.claim_released',
+      startTime,
+      attributes: {
+        'release.released': result.released.length,
+        'release.unconfirmed': result.unconfirmed.length,
+      },
+      items: items.map((i) => ({
+        orderId: i.orderId,
+        traceContext: contexts.get(i.orderId) ?? null,
+        attributes: { 'release.result': i.result },
+      })),
+      onItem: (item) => {
+        logger.warn(
+          { orderId: item.orderId, result: resultOf.get(item.orderId) },
+          'claim_released',
+        );
+      },
+    });
+    return result;
   };
 }
 

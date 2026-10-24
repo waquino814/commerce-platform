@@ -17,3 +17,16 @@ export {
 export { completeShutdown } from './shutdown.js';
 export { startTelemetry, BATCH_MAX_QUEUE_SIZE, type StartTelemetryOptions } from './sdk.js';
 export { registerTelemetry } from './register.js';
+export {
+  annotateActiveSpan,
+  creationLink,
+  currentTraceparent,
+  markSpanError,
+  parseTraceparent,
+  recordSweep,
+  withSpan,
+  type Attributes,
+  type Span,
+  type SweepItem,
+  type WithSpanOptions,
+} from './correlation.js';

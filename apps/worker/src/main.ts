@@ -1,11 +1,12 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { claimDueOrders, ConfigError, createPool, recoverExpiredClaims } from '@commerce/db';
+import { claimDueOrders, ConfigError, createPool } from '@commerce/db';
 import { completeShutdown, getActiveTelemetry, traceLogMixin } from '@commerce/telemetry';
 import { pino } from 'pino';
 import { loadConfig } from './config.js';
 import { buildHealthServer } from './health-server.js';
 import { runWorkerLoop } from './loop.js';
 import { PassRegistry } from './pass-context.js';
+import { createClaimRecoverer } from './recovery.js';
 import { createPaymentSimulator } from './payment/simulator.js';
 import { createProcessor } from './processor.js';
 import { createClaimReleaser, DRAIN_DEADLINE_MS, shutdownWorker } from './shutdown.js';
@@ -73,15 +74,16 @@ async function main(): Promise<void> {
   const loopDone = runWorkerLoop(
     {
       claim: (limit) => claimDueOrders(pool, { workerId: config.workerId, limit }),
-      recover: () =>
-        recoverExpiredClaims(pool, {
+      recover: createClaimRecoverer({
+        pool,
+        logger,
+        params: {
           ...policy,
           claimTimeoutMs: config.claimTimeoutMs,
           retryBaseMs: config.limits.retryBaseDelayMs,
           retryMaxMs: config.limits.retryMaxDelayMs,
-        }).then((recovered) => {
-          if (recovered.length > 0) logger.warn({ recovered }, 'expired claims recovered');
-        }),
+        },
+      }),
       process: (order) => processor.process(order),
       concurrency: config.concurrency,
       claimBatchSize: config.claimBatchSize,
@@ -109,7 +111,12 @@ async function main(): Promise<void> {
       loopDone,
       registry,
       drainDeadline: sleep(DRAIN_DEADLINE_MS).then(() => undefined),
-      release: createClaimReleaser(pool, policy, logger),
+      release: createClaimReleaser(
+        pool,
+        policy,
+        logger,
+        (orderId) => registry.get(orderId)?.order.traceContext ?? null,
+      ),
       logger,
     })
       .then((result) =>

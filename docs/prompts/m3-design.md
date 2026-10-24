@@ -1,6 +1,6 @@
 # M3 design: observability
 
-Status: design approved. The M3a spike is complete; see "Spike outcome". **M3a is implemented and verified locally, pending review and the GitHub Actions run.** M3b and M3c have not started.
+Status: design approved. The M3a spike is complete; see "Spike outcome". **M3a is implemented and verified locally, pending review and the GitHub Actions run.** **M3b is implemented and verified locally, pending review and the GitHub Actions run.** M3c has not started.
 
 ## Scope
 
@@ -55,7 +55,7 @@ A worker pass never joins the request's trace. Each pass starts a new trace and 
 | `POST /orders`   | The HTTP server span, plus an `order.create` child. Once the order exists, both carry `order.id`, and `order.create` also carries `order.idempotent_replay`. Database spans are children. The W3C `traceparent` of `order.create` is stored in `orders.trace_context` when the order is inserted. A replay does not overwrite it.                                                                                                                                                |
 | Each worker pass | A new root span, `order.process`, with kind CONSUMER. It links to the stored creation context, with link attributes `order.link = "created"` and `order.id`.                                                                                                                                                                                                                                                                                                                     |
 | Pass attributes  | `order.id`, `order.pass.type` (`charge` or `reconciliation`), `order.processing_attempt` (the token), `order.charge_attempts`, `order.reconciliation_attempts`, and, at the end, `order.pass.outcome`.                                                                                                                                                                                                                                                                           |
-| Pass children    | `order.reserve`, then `payment.charge` or `payment.lookup_or_void` with `payment.result` and `payment.replayed`, then `order.finalize`. Database spans sit under the step that issued them.                                                                                                                                                                                                                                                                                      |
+| Pass children    | `order.reserve`, then `payment.charge` or `payment.lookup_or_void` with `payment.result` and `payment.replayed`, then `order.finalize` with `order.finalize.target` and `order.inventory_released`. `order.inventory_released` is true exactly when a finalize to `failed` released reserved stock. Database spans sit under the step that issued them.                                                                                                                          |
 | Status           | ERROR only for the `error` and `aborted` outcomes. An unknown payment outcome is recorded as a span event `payment.outcome_unknown`, not as an error.                                                                                                                                                                                                                                                                                                                            |
 | Claim recovery   | A root span `worker.recover_claims`, emitted only when a sweep recovered at least one order. Its start time is taken before the statement ran, and it carries `claims.recovered`. It has **one child span per recovered order**, `order.claim_recovered`, carrying `order.id`, `order.status` (the target status) and `order.processing_attempt`. Each child links to that order's creation context, with link attribute `order.id`. Sweeps that recover nothing create no span. |
 | Shutdown release | A root span `worker.release_claims` with `release.released` and `release.unconfirmed`, and one child per affected order, `order.claim_released`, with `order.id` and `release.result` (`released` or `unconfirmed`). Each child links to the creation context, as for recovery.                                                                                                                                                                                                  |
@@ -279,7 +279,9 @@ The worst case stays bounded by the M2 hard deadline: telemetry adds at most 300
   - It is additive, with no backfill.
   - The transition trigger fires only on `UPDATE OF status`, so it is unaffected.
   - The M2 constraints are unaffected.
-- **Data access:** `createOrder` accepts an optional `traceContext`. `claimDueOrders` and `recoverExpiredClaims` also return `trace_context`, and recovery returns `processing_attempts`. Shutdown release reads the context from the in-memory pass registry, so it needs no extra query.
+- **Data access:** `createOrder` accepts an optional `traceContext`, and `claimDueOrders` also returns `trace_context`.
+  - **Recovery, as built in M3b:** `recoverExpiredClaims` keeps its exact M2 return shape, `{ id, status }`, because M2 tests assert it with exact equality. A new `recoverExpiredClaimsWithContext` runs the same statement and also returns `processing_attempts` and `trace_context`. The worker's traced recovery uses it.
+  - **Release:** the shutdown release reads each order's context from the in-memory pass registry through an optional lookup passed to `createClaimReleaser`, so it needs no extra query. `shutdownWorker` is unchanged.
 - **Logging:** recovery logs one line per recovered order instead of one line listing the ids. This is a log-format change only. No M2 test asserts the old line.
 - **Unchanged contracts:** API request and response contracts, every M2 data-access contract, and all M2 tests. The only planned M2 test edit is the migration list in the migrate test, which gains `003`.
 - **Coverage:** `packages/telemetry` joins the coverage gate at 80% line coverage.
@@ -426,6 +428,8 @@ All three are multi-architecture images that include `amd64` and `arm64`.
     `GET /api/v3/traces/{creationTraceId}` returns the creation trace.
 
     A control request without the time bounds returns HTTP 400. That guards against a Jaeger upgrade silently changing the contract.
+
+    **Automated, local only:** `pnpm e2e:jaeger` runs exactly this procedure against the Compose stack, from `packages/telemetry/e2e/jaeger-correlation.js`. It exits 1 with diagnostics naming the trace ids it could find. It is not a CI gate, because CI has no Compose stack.
 
 ### M3c: metrics
 

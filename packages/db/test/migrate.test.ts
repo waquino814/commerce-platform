@@ -2,7 +2,11 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { runMigrations } from '../src/index.js';
 import { createTestPool } from './support.js';
 
-const ALL = ['001_orders.sql', '002_catalog_and_order_processing.sql'];
+const ALL = [
+  '001_orders.sql',
+  '002_catalog_and_order_processing.sql',
+  '003_order_trace_context.sql',
+];
 
 describe('runMigrations', () => {
   const pool = createTestPool();
@@ -49,7 +53,7 @@ describe('runMigrations', () => {
        VALUES (200, 'USD', 'processing', 'm1-worker', now(), 1)`,
     );
 
-    expect(await runMigrations(pool)).toEqual(['002_catalog_and_order_processing.sql']);
+    expect(await runMigrations(pool)).toEqual(ALL.slice(1));
 
     const rows = await pool.query<{ status: string; failure_reason: string; claimed_by: null }>(
       'SELECT status, failure_reason, claimed_by FROM orders',

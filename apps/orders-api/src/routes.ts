@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createOrder, getOrder, listProducts, type OrderView, type Pool } from '@commerce/db';
+import { annotateActiveSpan, currentTraceparent, withSpan } from '@commerce/telemetry';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { sendError, sendValidationError } from './errors.js';
@@ -69,16 +70,31 @@ export function registerCommerceRoutes(app: FastifyInstance, deps: { pool: Pool 
       idempotencyKey = key.data;
     }
 
-    const result = await createOrder(
-      deps.pool,
-      {
-        items: body.data.items,
-        paymentMethod: body.data.paymentMethod,
-        idempotencyKey,
-        requestHash: requestHash(body.data),
-      },
-      orderTotalCents,
-    );
+    // M3b: the order.create span's traceparent is stored with a new order, so every later worker
+    // pass can link back to this trace. A replay keeps the originally stored value.
+    const result = await withSpan('order.create', {}, async (span) => {
+      const created = await createOrder(
+        deps.pool,
+        {
+          items: body.data.items,
+          paymentMethod: body.data.paymentMethod,
+          idempotencyKey,
+          requestHash: requestHash(body.data),
+          traceContext: currentTraceparent(),
+        },
+        orderTotalCents,
+      );
+      if (created.kind === 'created' || created.kind === 'replayed') {
+        span.setAttributes({
+          'order.id': created.order.id,
+          'order.idempotent_replay': created.kind === 'replayed',
+        });
+      }
+      return created;
+    });
+    if (result.kind === 'created' || result.kind === 'replayed') {
+      annotateActiveSpan({ 'order.id': result.order.id }); // the HTTP server span
+    }
     switch (result.kind) {
       case 'unknown_products':
         return sendError(reply, 422, 'unknown_product', 'unknown SKUs in order', result.skus);

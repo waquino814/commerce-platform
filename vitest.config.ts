@@ -40,6 +40,7 @@ export default defineConfig({
         'apps/worker/src/processor.ts',
         'apps/worker/src/pass-context.ts',
         'apps/worker/src/shutdown.ts',
+        'apps/worker/src/recovery.ts',
         'apps/worker/src/payment/simulator.ts',
         'apps/orders-api/src/pricing.ts',
         // M3a. register.ts is the preload body, exercised by `pnpm test:smoke` instead.

@@ -58,7 +58,7 @@ The design and the 17 acceptance criteria are in `docs/prompts/m3-design.md`. Ea
 - HTTP and database spans. JSON logs on stdout carry `trace_id` and `span_id` only inside an active span.
 - The collector, Jaeger and Prometheus run in Compose at pinned versions, and their health endpoints answer.
 
-### M3b: Order trace correlation
+### M3b: Order trace correlation (implemented and verified locally; review and GitHub Actions run pending)
 
 - Order creation stores its trace context. Every worker pass starts a new trace whose root span links to the order's creation trace. No trace stays open across retries, reconciliation, or `payment_unknown` rechecks.
 - Searching Jaeger by `order.id` finds the creation trace and every pass trace within 10 seconds.
