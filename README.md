@@ -7,7 +7,7 @@ It is the first of two repositories in an AI engineering portfolio. The second, 
 ## Status
 
 - **M0, Foundation, and M1, Skeleton, schema, and health:** done.
-- **M2, Working commerce flow:** implemented, and all 36 acceptance criteria pass locally. The GitHub Actions run for M2 has not been observed yet.
+- **M2, Working commerce flow:** done. All 36 acceptance criteria pass, and GitHub Actions is green for the M2 commit.
 - **M3a, Telemetry foundation:** implemented and verified locally; review and the GitHub Actions run are pending.
   - With Compose, the apps send traces through an OpenTelemetry Collector to Jaeger at http://localhost:16686, and Prometheus runs at http://localhost:9090.
   - JSON logs carry `trace_id` and `span_id` inside a request.
@@ -38,6 +38,7 @@ The lifecycle, processing protocol, and API contracts are specified in [docs/pro
 - **M3:** OpenTelemetry traces, metrics, and logs, collected locally.
 - **M4:** a deterministic load generator.
 - **M5:** seeded fault scenarios that produce incident bundles with ground truth.
+- **M7:** a React UI, after the Engineering Operations AI UI. See [ADR 0004](docs/decisions/0004-frontend-sequencing.md).
 
 ## Requirements
 

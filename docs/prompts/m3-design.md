@@ -16,7 +16,7 @@ Status: design approved. The M3a spike is complete; see "Spike outcome". **M3a i
 **Out of scope:**
 
 - exporting logs through the collector, and telemetry files. Both move to M5, with incident bundles;
-- load generation (M4), fault injection and bundles (M5), and the frontend UI;
+- load generation (M4), fault injection and bundles (M5), and any UI (M7);
 - dashboards and alerting;
 - any change to order outcomes, API responses, the lifecycle, or M2's shutdown contract.
 

@@ -1,6 +1,6 @@
 # M2 design: working commerce flow
 
-Status: approved and implemented. All 36 acceptance criteria pass locally. The GitHub Actions run has not been observed yet.
+Status: approved, implemented, and done. All 36 acceptance criteria pass, and GitHub Actions is green for commit `3950841`.
 
 Implementation notes. None of these change the design:
 

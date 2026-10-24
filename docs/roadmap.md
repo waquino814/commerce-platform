@@ -2,6 +2,10 @@
 
 Each milestone is done only when every acceptance criterion passes on a clean clone.
 
+## Cross-repository sequencing
+
+Both portfolio repositories will have a React UI. The Engineering Operations AI UI is built first, once its backend and investigation workflow work. The Commerce Platform UI follows as M7. Until then this repository ships no frontend, and its API contracts follow the rules in the "Frontend readiness" section of `docs/architecture.md`. See ADR 0004.
+
 ## M0: Foundation (done)
 
 - [x] Engineering rules, README, architecture, roadmap, and ADRs exist and agree with each other.
@@ -22,7 +26,7 @@ Scope: pnpm workspace, `apps/orders-api`, `apps/worker`, `packages/db`, the `ord
 
 Exact verification commands live in `docs/prompts/initial-implementation.md`.
 
-## M2: Working commerce flow (verified locally; GitHub Actions run pending)
+## M2: Working commerce flow (done)
 
 Scope and the 36 numbered acceptance criteria are in `docs/prompts/m2-design.md`. The processing protocol is recorded in ADR 0005. No UI, telemetry, load generation, or faults.
 
@@ -39,7 +43,7 @@ Scope and the 36 numbered acceptance criteria are in `docs/prompts/m2-design.md`
   - a release blocked by a held row lock, which exits with code 1 and leaves the order recoverable.
 - [x] **Lookup failures and `payment_unknown`, 26 to 31 and 36:** backoff, parking, rechecks, authoritative approval or void, racing workers, and stock released at most once.
 - [x] **Ledger serialization and attempt semantics, 32 to 34:** both charge-versus-void orders, duplicate requests, and shutdowns not spending the payment budget.
-- [ ] The GitHub Actions workflow passes with the M2 changes. Not yet observed. Mark this, and the milestone, done only after a green run.
+- [x] The GitHub Actions workflow passes with the M2 changes. The repository owner confirmed a green run for commit `3950841`.
 
 Verification: `pnpm test:coverage` runs the deterministic criteria against the Compose Postgres. Criteria 1, 14, 15 and the informational timing check run against `docker compose up --build --wait`.
 
@@ -89,3 +93,14 @@ The design and the 17 acceptance criteria are in `docs/prompts/m3-design.md`. Ea
 - README includes a quick start that takes under 10 minutes on a fresh machine.
 - A small sample incident bundle is committed under `docs/examples/`, with a walkthrough of its signals.
 - Architecture diagram and ADRs are current.
+
+## M7: Commerce UI
+
+Starts only after the Engineering Operations AI UI is functional.
+
+- `apps/web` is a React app that runs locally through Docker Compose, with no cloud services.
+- Users can place an order, see order history, and watch an order's status change until it is `paid` or `failed`.
+- Users can list and start predefined demo scenarios through the M5 scenario endpoints, which are enabled only in demo mode.
+- The UI uses only the public HTTP API. No pricing, stock, or lifecycle rule is reimplemented in the UI.
+- Any endpoint the UI needs that does not exist yet, such as order history listing, is added to the API with tests first.
+- End-to-end tests cover placing an order and seeing it reach a terminal status.

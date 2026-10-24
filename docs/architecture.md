@@ -8,15 +8,16 @@ Run a believable commerce workload locally, inject faults on demand, and export 
 
 Each component appears only in the milestone that gives it real code.
 
-| Component            | Milestone | Responsibility                                                                                            | Does not                                                |
-| -------------------- | --------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `apps/orders-api`    | M1        | Fastify HTTP API for catalog and orders. Writes orders as `pending`.                                      | Process orders inline.                                  |
-| `apps/worker`        | M1        | Claims due orders for free slots only, reserves stock, charges through the payment simulator, reconciles. | Serve public traffic. It exposes health endpoints only. |
-| `packages/db`        | M1        | SQL migrations, migration runner, connection pool factory, data-access functions.                         | Contain business rules.                                 |
-| `apps/loadgen`       | M4        | Seeded, deterministic traffic profiles against the orders API.                                            | Inspect internal state.                                 |
-| `packages/telemetry` | M3        | OpenTelemetry SDK setup and shared metric names for both apps.                                            | Know about business logic.                              |
-| fault package        | M5        | Scenario registry and injection hooks. Inert unless enabled.                                              | Change behavior by default.                             |
-| incident tool        | M5        | Runs a scenario end to end and writes an incident bundle.                                                 | Analyze or diagnose incidents.                          |
+| Component            | Milestone | Responsibility                                                                                            | Does not                                                  |
+| -------------------- | --------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `apps/orders-api`    | M1        | Fastify HTTP API for catalog and orders. Writes orders as `pending`.                                      | Process orders inline.                                    |
+| `apps/worker`        | M1        | Claims due orders for free slots only, reserves stock, charges through the payment simulator, reconciles. | Serve public traffic. It exposes health endpoints only.   |
+| `packages/db`        | M1        | SQL migrations, migration runner, connection pool factory, data-access functions.                         | Contain business rules.                                   |
+| `apps/loadgen`       | M4        | Seeded, deterministic traffic profiles against the orders API.                                            | Inspect internal state.                                   |
+| `packages/telemetry` | M3        | OpenTelemetry SDK setup and shared metric names for both apps.                                            | Know about business logic.                                |
+| fault package        | M5        | Scenario registry and injection hooks. Inert unless enabled.                                              | Change behavior by default.                               |
+| incident tool        | M5        | Runs a scenario end to end and writes an incident bundle.                                                 | Analyze or diagnose incidents.                            |
+| `apps/web`           | M7        | React UI for placing orders, viewing order history and status, and running demo scenarios.                | Contain business rules. It uses only the public HTTP API. |
 
 Pure order and pricing rules start inside the app that uses them. They move to a shared package only if a second consumer appears.
 
@@ -53,6 +54,18 @@ Status transitions, enforced in code and by a trigger: `pending -> processing`, 
 - **Resilience baseline:** the worker logs and retries database errors instead of crashing, and the pool handles idle-client errors. Outage incidents in M5 therefore show up as degraded behavior, not as crash loops.
 - **Faults:** the pool, payment simulator, clock, and random source are injected. M5 can wrap them without touching call sites.
 - **Determinism:** no hidden `Date.now()` or `Math.random()` in logic that affects order outcomes from M2 onward.
+
+## Frontend readiness
+
+A React UI is planned for M7, after the Engineering Operations AI UI exists. ADR 0004 records the decision. Until then, there is no frontend code, but the backend is built so a UI can be added without changing business logic.
+
+- **Business rules stay in the backend.** Pricing, stock, and lifecycle rules live in the API and worker. The UI only displays state and submits requests.
+- **Contracts are presentation-neutral.** Responses are JSON with stable field names, ISO 8601 timestamps, and integer cents. Any text a user sees is chosen by the UI, not returned by the API.
+- **Errors are machine-readable.** Every error has the shape `{ error, message, details? }`, with a stable `error` code the UI can map to its own text.
+- **Status is readable without guessing.** Order responses include the status, failure reason, and attempt count, so the UI can show progress by polling `GET /orders/:id`.
+- **Lists are paginated with cursors,** so order history and catalog views scale.
+- **Demo scenarios use the same API as everything else.** The M5 scenario control endpoints will list, start, and report on scenarios, and stay disabled unless `FAULTS_ENABLED=true`.
+- **No UI concerns leak into the backend yet.** CORS, sessions, and static file serving are decided in M7.
 
 ## Fault scenarios
 
