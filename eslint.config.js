@@ -21,9 +21,9 @@ export default tseslint.config(
     ...tseslint.configs.disableTypeChecked,
   },
   {
-    // Plain ESM smoke and e2e scripts run directly by Node (packages/*/smoke, packages/*/e2e).
-    // Declared here instead of adding a globals dependency.
-    files: ['packages/*/smoke/**/*.js', 'packages/*/e2e/**/*.js'],
+    // Plain ESM smoke and e2e scripts run directly by Node (packages/*/smoke, packages/*/e2e,
+    // apps/*/smoke). Declared here instead of adding a globals dependency.
+    files: ['packages/*/smoke/**/*.js', 'packages/*/e2e/**/*.js', 'apps/*/smoke/**/*.js'],
     languageOptions: {
       globals: {
         process: 'readonly',

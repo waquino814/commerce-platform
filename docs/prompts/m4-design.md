@@ -1,6 +1,6 @@
 # M4 design: load generation
 
-Status: **approved.** Nothing in this document is implemented. Every design choice below has been resolved with the repository owner. The determinism decision is recorded in ADR 0006.
+Status: **approved.** Every design choice below has been resolved with the repository owner. **Implemented and verified locally; the local performance check (criterion 11) and the GitHub Actions run are pending.** The determinism decision is recorded in ADR 0006.
 
 ## Scope
 
@@ -15,7 +15,7 @@ Status: **approved.** Nothing in this document is implemented. Every design choi
 
 - fault injection, scenarios and incident bundles (M5), and any UI (M7);
 - a telemetry SDK in the load generator, and a Compose service for it;
-- any change to the API, the worker, the database schema or M2 and M3 behavior. The only change outside `apps/loadgen` is a pure catalog export from `packages/db`, described below;
+- any change to the API, the worker, the database schema or M2 and M3 behavior. The only functional change outside `apps/loadgen` is a pure catalog export from `packages/db`, described below. Repository wiring also changes, without changing behavior: the Docker build stage, the TypeScript project references, the lint config, the Vitest aliases and coverage gate, the root `loadgen` and `test:smoke` scripts, and `.env.example`;
 - automatic database resets.
 
 ## Sources
@@ -66,7 +66,7 @@ A **request plan** is a pure function of the profile and the seed. See ADR 0006.
 - **Not hashed:** responses, server-generated ids, the run prefix, actual send times and latencies.
 - **Dry run:** `pnpm loadgen --profile steady --seed 42 --dry-run` prints the entry count, the mix and the plan hash, and makes no network call.
 
-**Seeded randomness.** A small PRNG written in the package, mulberry32, with 32-bit seeds. Each decision dimension gets its own stream, derived from the seed with splitmix32 and a fixed stream id: operation, SKU, quantity, payment method, cursor and read target. Changing one dimension's logic then does not reshuffle the others. Fixed test vectors pin the generator's output. It is not cryptographic and is never used for anything security-related.
+**Seeded randomness.** A small PRNG written in the package, mulberry32, with 32-bit seeds. Each decision dimension gets its own stream, derived from the seed with splitmix32 and a fixed stream id: operation, SKU, quantity, payment method, cursor, read target and item count. Changing one dimension's logic then does not reshuffle the others. Fixed test vectors pin the generator's output. It is not cryptographic and is never used for anything security-related.
 
 ## The `steady` profile
 
@@ -94,20 +94,20 @@ A **request plan** is a pure function of the profile and the seed. See ADR 0006.
 **Scheduling: open loop.** Each entry is due at `start + offsetMs` on an injected monotonic clock, whatever the latency of earlier requests.
 
 - At most 64 requests are in flight.
-- An entry whose send cannot start within 100 ms of its due time, because the cap is full, is a **missed deadline**: it is not sent, and it is counted separately.
+- An entry whose send would start more than 100 ms after its due time is a **missed deadline**: it is not sent, and it is counted separately. Usually the in-flight cap is full, but scheduler lag, such as a busy event loop, also counts even when slots are free. A send at exactly 100 ms is on time.
 - An `order.read` whose create has failed or has not completed by its due time is **skipped**, and counted separately.
 - Each request has a 5 s timeout, enforced with `AbortSignal.timeout`.
 - HTTP uses Node's built-in `fetch`. CLI arguments use `node:util` `parseArgs`. No new dependency.
 
 **Accounting.** Each plan entry due inside the measured window gets exactly one outcome.
 
-| Outcome                                                                     | Category   |
-| --------------------------------------------------------------------------- | ---------- |
-| `product.list` 200, `order.create` 201, `order.read` 200                    | successful |
-| Any other status, including a 200 replay, 409, 404, 422 and 5xx             | failed     |
-| Transport failure, or no response within 5 s                                | failed     |
-| Not started within 100 ms of its due time because the in-flight cap is full | missed     |
-| `order.read` whose create failed, was missed, or has not completed          | skipped    |
+| Outcome                                                                                      | Category   |
+| -------------------------------------------------------------------------------------------- | ---------- |
+| `product.list` 200, `order.create` 201, `order.read` 200                                     | successful |
+| Any other status, including a 200 replay, 409, 404, 422 and 5xx                              | failed     |
+| Transport failure, or no response within 5 s                                                 | failed     |
+| Not started within 100 ms of its due time, whether the cap is full or the scheduler ran late | missed     |
+| `order.read` whose create failed, was missed, or has not completed                           | skipped    |
 
 The report gives each count separately. With every count taken over entries due in the window:
 
@@ -136,7 +136,7 @@ Warm-up entries and preflight requests are excluded from every count.
 
    If the shortfall is above 5%, it exits 1. Exactly 5% passes. The threshold applies only to the aggregate.
 
-   **Preflight report.** On pass and on fail, the report gives the aggregate shortfall with total planned and unmet quantities, and lists every SKU whose planned quantity exceeds its available stock, with `sku`, `planned`, `available` and `unmet`, sorted by `unmet` descending and then by SKU. The human-readable summary shows the first 20 of these SKUs and the total count; `--json` lists all of them under `preflight.shortSkus`. On fail, the message also says that restoring stock means recreating the database by hand, because `pnpm db:seed` never changes existing SKUs. The per-SKU list is informational: a short SKU never fails the run by itself.
+   **Preflight report.** On pass and on fail, the report gives the aggregate shortfall with total planned and unmet quantities, and lists every SKU whose planned quantity exceeds its available stock, with `sku`, `planned`, `available` and `unmet`, sorted by `unmet` descending and then by SKU. The human-readable summary shows the first 20 of these SKUs and the total count; `--json` lists all of them under `preflight.stock.shortSkus`. On fail, the message also says that restoring stock means recreating the database by hand, because `pnpm db:seed` never changes existing SKUs. The per-SKU list is informational: a short SKU never fails the run by itself.
 
    **Why 5%:** with uniform SKU selection, the 10 scarce SKUs receive about 1% of the planned quantity and empty within a run or two, so a lower threshold would block runs on stock that is scarce by design. Out-of-stock orders still return 201, so they never affect the API thresholds.
 
@@ -149,14 +149,15 @@ The preflight never writes, resets or reseeds anything. It sends only `GET` requ
 ## Database-state assumptions
 
 - **Determinism covers requests only.** Responses depend on the database: stock, earlier orders, and the worker's progress.
-- **Stock use.** A steady run creates about 894 orders and reserves about 2,700 units, about 2.5% of the seed stock, or 2.7 units per SKU on average. Stock is consumed by paid orders and released by failed ones.
+- **Stock use.** The steady/42 plan has 923 creates for 2,771 units, about 2.6% of the seed stock, or 2.8 units per SKU on average. Stock is consumed by paid orders and released by failed ones.
 - **Scarce SKUs.** The 10 scarce SKUs, with 3 units each, run out within a run or two. Those orders still return 201 and fail in the worker with `out_of_stock`, which is a worker outcome, not a load-generator failure.
 - **Repeated runs** deplete stock further, and `pnpm db:seed` does not restore it. The preflight stops a run whose starting shortfall is above 5%, but it checks only the stock at the start. Recreating the database is a manual, destructive step that the docs describe and the load generator never performs.
 - **Worker backlog** is not part of the thresholds. At the offered rate, about 14 orders per second arrive; the worker runs 5 passes at a time by default. The M3 metrics `commerce_orders` and `commerce_worker_passes_total` show whether it keeps up.
 
 ## Packaging
 
-- `apps/loadgen/src`: `config.ts` (Zod: `ORDERS_API_URL`, default `http://localhost:3000`), `random.ts`, `profiles.ts`, `plan.ts`, `runner.ts` (scheduler and HTTP), `stats.ts`, and `main.ts` (CLI). Each is built through factories with an injected clock, timers, random source and HTTP function.
+- `apps/loadgen/src`: `config.ts` (Zod: `ORDERS_API_URL`, default `http://localhost:3000`), `random.ts`, `profiles.ts`, `plan.ts`, `runner.ts` (scheduler and HTTP), `stats.ts`, `preflight.ts`, `cli.ts` (the tested CLI logic), `index.ts` (the factory), and `main.ts` (the thin CLI entry, excluded from coverage). Each is built through factories with an injected clock, timers, random source and HTTP function.
+- **Docker:** the root build includes the load generator, so the Dockerfile copies it into the build stage only. It is not part of the runtime image and has no Compose service.
 - **Root script:** `"loadgen": "node --env-file-if-exists=.env apps/loadgen/dist/main.js"`, so arguments after `pnpm loadgen` pass through.
 - **Workspace wiring:** a TypeScript project reference, and the new modules added to the coverage gate.
 - **Telemetry:** none in the load generator. The API's existing spans and metrics show the traffic. Requests carry no `traceparent`, so each request is a new trace.

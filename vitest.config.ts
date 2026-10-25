@@ -11,6 +11,10 @@ export default defineConfig({
     // `@commerce/db/config` must not be rewritten as a prefix of `@commerce/db`.
     alias: [
       {
+        find: /^@commerce\/db\/catalog$/,
+        replacement: fileURLToPath(new URL('./packages/db/src/catalog.ts', import.meta.url)),
+      },
+      {
         find: /^@commerce\/db\/config$/,
         replacement: fileURLToPath(new URL('./packages/db/src/config.ts', import.meta.url)),
       },
@@ -44,12 +48,18 @@ export default defineConfig({
         // M3c.
         'apps/worker/src/order-status-sampler.ts',
         'apps/worker/src/worker-metrics.ts',
+        // M4. main.ts is the thin CLI entry; cli.ts holds its logic and is tested.
+        'apps/loadgen/src/**/*.ts',
         'apps/worker/src/payment/simulator.ts',
         'apps/orders-api/src/pricing.ts',
         // M3a. register.ts is the preload body, exercised by `pnpm test:smoke` instead.
         'packages/telemetry/src/**/*.ts',
       ],
-      exclude: ['packages/telemetry/src/register.ts', 'packages/telemetry/src/index.ts'],
+      exclude: [
+        'packages/telemetry/src/register.ts',
+        'packages/telemetry/src/index.ts',
+        'apps/loadgen/src/main.ts',
+      ],
       reporter: ['text', 'json-summary'],
       thresholds: { lines: 80, perFile: true },
     },

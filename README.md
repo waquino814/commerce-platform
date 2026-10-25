@@ -17,7 +17,9 @@ It is the first of two repositories in an AI engineering portfolio. The second, 
 - **M3c, Metrics:** done. GitHub Actions is green for commit `8a0a941`, as confirmed by the repository owner. The live Compose checks for criteria 15 and 16 last ran before a final hardening pass, which changed only error reporting, a default constant and tests, and have not been rerun.
   - Request, connection-pool, order-status, worker-pass, payment and claim metrics reach Prometheus through the collector.
   - Labels come from closed sets. Order ids, SKUs, raw URLs and payment references are never labels.
-- **M4 and later:** not started. The load generator, fault injection and the UI are still to come.
+- **M4, Load generation:** implemented and verified locally; the local performance check and the GitHub Actions run are pending.
+  - `pnpm loadgen` runs seeded, deterministic traffic against the orders API. The same profile and seed always produce the same request plan and plan hash.
+- **M5 and later:** not started. Fault injection, incident bundles and the UI are still to come.
 
 See [docs/roadmap.md](docs/roadmap.md) for milestone boundaries and acceptance criteria.
 
@@ -41,7 +43,7 @@ The lifecycle, processing protocol, and API contracts are specified in [docs/pro
 
 ## Planned
 
-- **M4:** a deterministic load generator.
+- **M4:** a deterministic load generator. Implemented and verified locally; it stays here until GitHub Actions passes and the local performance check, acceptance criterion 11, is resolved.
 - **M5:** seeded fault scenarios that produce incident bundles with ground truth.
 - **M7:** a React UI, after the Engineering Operations AI UI. See [ADR 0004](docs/decisions/0004-frontend-sequencing.md).
 
@@ -97,10 +99,19 @@ pnpm dev
 | `pnpm test:smoke`                   | Run the telemetry smoke tests under the production `--import` preload.                        |
 | `pnpm e2e:jaeger`                   | Local only: check that an order's creation and pass traces are findable and linked in Jaeger. |
 | `pnpm e2e:prometheus`               | Local only: check that the metric catalog reaches Prometheus with the expected labels.        |
+| `pnpm loadgen`                      | Run a seeded load profile against the orders API, or print its plan hash with `--dry-run`.    |
 
 `pnpm e2e:jaeger` needs the Compose stack running with telemetry (`docker compose up -d --build --wait`) and `DATABASE_URL` pointing at its Postgres, as the default `.env` does. It places one order and exits 1 with diagnostics if the traces are missing or unlinked. It is not part of CI.
 
 `pnpm e2e:prometheus` needs the same running stack. It places three orders, one rejected order and one request to an unknown URL, then waits up to 30 seconds for the expected series. It exits 1 with diagnostics if a series, a label, or the `job` and `instance` labels are wrong. It is not part of CI.
+
+`pnpm loadgen --profile steady --seed 42` needs a build (`pnpm build`) and a running orders API at `ORDERS_API_URL`, default `http://localhost:3000`. Both flags are required.
+
+- `--dry-run` prints the entry count, the mix and the plan hash, and sends nothing. `--json` prints a machine-readable report.
+- A live run first checks the API's `/readyz`, the catalog, and that at most 5% of the planned order-item quantity is short of current stock. It then offers 55 requests per second for 65 seconds and reports offered, sent, successful, failed, missed and skipped requests, throughput, failure rate and latency. It exits 1 if throughput is under 50 rps, p95 is 200 ms or more, or failures are 1% or more.
+- A steady run with seed 42 creates 923 real orders for 2,771 units of stock. `pnpm db:seed` never restores stock, and the load generator never resets or reseeds the database; recreating it is a manual step.
+
+The design is in [docs/prompts/m4-design.md](docs/prompts/m4-design.md).
 
 Worker settings, such as concurrency, timeouts, retry limits, and backoff, are documented in `.env.example`. The worker refuses to start with an unsafe combination, for example a claim timeout shorter than 1.5 times its processing budget.
 

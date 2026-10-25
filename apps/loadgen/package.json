@@ -1,0 +1,21 @@
+{
+  "name": "@commerce/loadgen",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "exports": {
+    ".": {
+      "@commerce/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@commerce/db": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "pino": "10.4.0"
+  }
+}

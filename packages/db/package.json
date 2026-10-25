@@ -13,6 +13,11 @@
       "@commerce/source": "./src/config.ts",
       "types": "./dist/config.d.ts",
       "default": "./dist/config.js"
+    },
+    "./catalog": {
+      "@commerce/source": "./src/catalog.ts",
+      "types": "./dist/catalog.d.ts",
+      "default": "./dist/catalog.js"
     }
   },
   "files": [
