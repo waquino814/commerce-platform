@@ -1,6 +1,6 @@
 # M5 design: fault scenarios and incident bundles
 
-Status: **M5a approved by the repository owner on 2026-10-25. The M5b contract addendum and M5b implementation were approved on 2026-10-25; M5c is not approved.** M5a is committed in `d1579ec`; its GitHub Actions result is not yet confirmed. M5b is committed; its GitHub Actions result is not yet confirmed. The bundle contract is recorded in ADR 0007.
+Status: **M5a approved by the repository owner on 2026-10-25. The M5b contract addendum and M5b implementation were approved on 2026-10-25; M5c is not approved.** M5a is committed in `d1579ec`; its GitHub Actions result is not yet confirmed. M5b is committed; its GitHub Actions result is not yet confirmed. M5c's implementation was approved on 2026-10-25 against `docs/prompts/m5c-design.md`; it is committed, with its GitHub Actions result not yet confirmed; its runtime isolation checks pass against the stack, and every live run still needs the owner's separate approval. The bundle contract is recorded in ADR 0007.
 
 ## Scope
 

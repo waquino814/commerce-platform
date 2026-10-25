@@ -1,0 +1,34 @@
+# M5 fault injection override (docs/prompts/m5-design.md, "Fault activation across processes";
+# docs/prompts/m5c-design.md, section 8.2). Used only with the base file, as an explicit step:
+#   docker compose -f compose.yaml -f compose.faults.yaml up -d --wait
+# Starting the stack with it needs the repository owner's separate approval.
+#
+# It enables the scenario control endpoints (FAULTS_ENABLED=true never starts a scenario) and
+# rebinds the fault-control ports, and the Jaeger and Prometheus ports the incident CLI reads, to
+# loopback, replacing the base file's all-interface bindings. The CLI's URL-mapping check requires
+# a publisher whose host IP equals the URL's IP literal (docs/prompts/m5c-design.md, section 8.2).
+#
+# `!override` replaces the base `ports` list instead of appending to it. Verified on Docker Compose
+# v5.4.0 on 2026-10-25, for configuration resolution and at runtime (section 14).
+services:
+  orders-api:
+    environment:
+      FAULTS_ENABLED: 'true'
+      WORKER_ADMIN_URL: http://worker:3001
+    ports: !override
+      - '127.0.0.1:3000:3000'
+
+  worker:
+    environment:
+      FAULTS_ENABLED: 'true'
+    ports: !override
+      - '127.0.0.1:3001:3001'
+
+  jaeger:
+    ports: !override
+      - '127.0.0.1:16686:16686'
+      - '127.0.0.1:13134:13133'
+
+  prometheus:
+    ports: !override
+      - '127.0.0.1:9090:9090'

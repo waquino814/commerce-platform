@@ -19,7 +19,7 @@ It is the first of two repositories in an AI engineering portfolio. The second, 
   - Labels come from closed sets. Order ids, SKUs, raw URLs and payment references are never labels.
 - **M4, Load generation:** done. Implemented in commit `5f6f6eb`, and GitHub Actions is green for it, as confirmed by the repository owner. All 12 acceptance criteria pass. The local performance check, criterion 11, passed on its first run: 55.00 rps with a load-generator p95 of 8.2 ms and no failures. The full results are in [docs/roadmap.md](docs/roadmap.md).
   - `pnpm loadgen` runs seeded, deterministic traffic against the orders API. The same profile and seed always produce the same request plan and plan hash.
-- **M5, Fault scenarios and incident bundles:** M5a committed in `d1579ec`; its GitHub Actions result is not yet confirmed. M5b, the bundle schema, validator, writer, capture clients and `incident` load profile, is committed; its GitHub Actions result is not yet confirmed. M5c is not approved. See [docs/prompts/m5-design.md](docs/prompts/m5-design.md).
+- **M5, Fault scenarios and incident bundles:** M5a committed in `d1579ec`; its GitHub Actions result is not yet confirmed. M5b, the bundle schema, validator, writer, capture clients and `incident` load profile, is committed; its GitHub Actions result is not yet confirmed. M5c, the incident CLI and its orchestration, is committed; its GitHub Actions result is not yet confirmed. Its runtime isolation checks pass against the local stack, and no live run has been made. See [docs/prompts/m5-design.md](docs/prompts/m5-design.md) and [docs/prompts/m5c-design.md](docs/prompts/m5c-design.md).
 - **M6 and later:** not started. Portfolio polish and the UI are still to come.
 
 See [docs/roadmap.md](docs/roadmap.md) for milestone boundaries and acceptance criteria.
@@ -85,21 +85,22 @@ pnpm dev
 
 ## Commands
 
-| Command                             | Purpose                                                                                       |
-| ----------------------------------- | --------------------------------------------------------------------------------------------- |
-| `pnpm build`                        | Compile all workspace projects with TypeScript project references.                            |
-| `pnpm dev`                          | Run both apps in watch mode against workspace source.                                         |
-| `pnpm lint`                         | Build types, then run type-aware ESLint.                                                      |
-| `pnpm typecheck`                    | Type-check source and tests.                                                                  |
-| `pnpm format` / `pnpm format:check` | Apply or check Prettier formatting.                                                           |
-| `pnpm db:migrate`                   | Apply pending migrations to `DATABASE_URL`.                                                   |
-| `pnpm db:seed`                      | Insert the 1,000-product catalog. Existing SKUs are never changed.                            |
-| `pnpm test`                         | Run unit and integration tests. Requires Postgres and `TEST_DATABASE_URL`.                    |
-| `pnpm test:coverage`                | Run the tests with the per-module 80% line coverage gate, as CI does.                         |
-| `pnpm test:smoke`                   | Run the telemetry smoke tests under the production `--import` preload.                        |
-| `pnpm e2e:jaeger`                   | Local only: check that an order's creation and pass traces are findable and linked in Jaeger. |
-| `pnpm e2e:prometheus`               | Local only: check that the metric catalog reaches Prometheus with the expected labels.        |
-| `pnpm loadgen`                      | Run a seeded load profile against the orders API, or print its plan hash with `--dry-run`.    |
+| Command                             | Purpose                                                                                        |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `pnpm build`                        | Compile all workspace projects with TypeScript project references.                             |
+| `pnpm dev`                          | Run both apps in watch mode against workspace source.                                          |
+| `pnpm lint`                         | Build types, then run type-aware ESLint.                                                       |
+| `pnpm typecheck`                    | Type-check source and tests.                                                                   |
+| `pnpm format` / `pnpm format:check` | Apply or check Prettier formatting.                                                            |
+| `pnpm db:migrate`                   | Apply pending migrations to `DATABASE_URL`.                                                    |
+| `pnpm db:seed`                      | Insert the 1,000-product catalog. Existing SKUs are never changed.                             |
+| `pnpm test`                         | Run unit and integration tests. Requires Postgres and `TEST_DATABASE_URL`.                     |
+| `pnpm test:coverage`                | Run the tests with the per-module 80% line coverage gate, as CI does.                          |
+| `pnpm test:smoke`                   | Run the telemetry smoke tests under the production `--import` preload.                         |
+| `pnpm e2e:jaeger`                   | Local only: check that an order's creation and pass traces are findable and linked in Jaeger.  |
+| `pnpm e2e:prometheus`               | Local only: check that the metric catalog reaches Prometheus with the expected labels.         |
+| `pnpm loadgen`                      | Run a seeded load profile against the orders API, or print its plan hash with `--dry-run`.     |
+| `pnpm incident`                     | M5c: list scenarios, print a ground truth, validate a bundle, check readiness, run a scenario. |
 
 `pnpm e2e:jaeger` needs the Compose stack running with telemetry (`docker compose up -d --build --wait`) and `DATABASE_URL` pointing at its Postgres, as the default `.env` does. It places one order and exits 1 with diagnostics if the traces are missing or unlinked. It is not part of CI.
 
@@ -110,6 +111,8 @@ pnpm dev
 - `--dry-run` prints the entry count, the mix and the plan hash, and sends nothing. `--json` prints a machine-readable report.
 - A live run first checks the API's `/readyz`, the catalog, and that at most 5% of the planned order-item quantity is short of current stock. It then offers 55 requests per second for 65 seconds and reports offered, sent, successful, failed, missed and skipped requests, throughput, failure rate and latency. It exits 1 if throughput is under 50 rps, p95 is 200 ms or more, or failures are 1% or more.
 - A steady run with seed 42 creates 923 real orders for 2,771 units of stock. `pnpm db:seed` never restores stock, and the load generator never resets or reseeds the database; recreating it is a manual step.
+
+`pnpm incident <command>` needs a build (`pnpm build`). `list`, `ground-truth --scenario <name> --seed <n>` and `validate <bundle-dir>` make no network calls. `capture-check` is read-only: it never starts faults, services or load, and writes nothing; it exits 0 when every check passes, 1 when one fails, and 5 when none fails but some are inconclusive. `run --scenario <name> --seed <n>` runs a scenario end to end. The `docker compose ps` output, the `compose.faults.yaml` loopback binding and the API identity premise were verified on 2026-10-25. The stack can run with `compose.faults.yaml`, which binds the API, worker, Jaeger and Prometheus to `127.0.0.1`; `capture-check` against it and every live run still need the owner's separate approval. Trace volume and Jaeger capture time are not yet verified. Starting the stack with `compose.faults.yaml`, and every live run, needs the owner's separate approval. See `docs/prompts/m5c-design.md`.
 
 The design is in [docs/prompts/m4-design.md](docs/prompts/m4-design.md).
 

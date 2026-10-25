@@ -43,6 +43,14 @@ export interface RunnerDeps {
   /** Production uses AbortSignal.timeout; tests inject a signal their fake clock controls. */
   readonly timeoutSignal?: (ms: number) => AbortSignal;
   readonly maxInFlight?: number;
+  /** M5c: called once with `clock.now()` when the plan starts, before any entry is scheduled. */
+  readonly onStart?: (atMs: number) => void;
+  /**
+   * M5c: cancels the plan. No entry is scheduled after an abort, in-flight requests are aborted
+   * (the caller's `timeoutSignal` must include this signal), and the promise rejects with the
+   * signal's reason once they have settled.
+   */
+  readonly signal?: AbortSignal;
 }
 
 export const nodeFetch: HttpFetch = (url, request) => fetch(url, request);
@@ -118,10 +126,15 @@ export function runPlan(plan: Plan, deps: RunnerDeps): Promise<EntryResult[]> {
   const waiting: { entry: PlanEntry; dueAt: number }[] = [];
   let inFlight = 0;
   let resolved = 0;
+  let cancelled = false;
   const start = clock.now();
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const rejectIfDrained = (): void => {
+      if (cancelled && inFlight === 0) reject(deps.signal?.reason as Error);
+    };
     const settle = (entry: PlanEntry, outcome: Outcome): void => {
+      if (cancelled) return;
       if (outcomes[entry.index] !== undefined) return;
       outcomes[entry.index] = outcome;
       resolved += 1;
@@ -153,6 +166,10 @@ export function runPlan(plan: Plan, deps: RunnerDeps): Promise<EntryResult[]> {
         done = true;
         inFlight -= 1;
         settle(entry, outcome);
+        if (cancelled) {
+          rejectIfDrained();
+          return;
+        }
         dispatch();
       };
       deps
@@ -223,11 +240,31 @@ export function runPlan(plan: Plan, deps: RunnerDeps): Promise<EntryResult[]> {
       if (entry === undefined) return;
       const delay = Math.max(0, start + entry.offsetMs - clock.now());
       timers.setTimeout(() => {
+        if (cancelled) return;
         becomeDue(entry);
         schedule(i + 1);
       }, delay);
     };
 
+    if (deps.signal?.aborted) {
+      reject(deps.signal.reason as Error);
+      return;
+    }
+    try {
+      deps.onStart?.(start);
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+    deps.signal?.addEventListener(
+      'abort',
+      () => {
+        cancelled = true;
+        waiting.length = 0;
+        rejectIfDrained();
+      },
+      { once: true },
+    );
     if (entries.length === 0) {
       resolve([]);
       return;

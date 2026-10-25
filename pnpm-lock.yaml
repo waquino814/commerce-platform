@@ -199,9 +199,15 @@ importers:
 
   apps/incident:
     dependencies:
+      '@commerce/faults':
+        specifier: workspace:*
+        version: link:../../packages/faults
       '@commerce/incident-bundle':
         specifier: workspace:*
         version: link:../../packages/incident-bundle
+      '@commerce/loadgen':
+        specifier: workspace:*
+        version: link:../loadgen
       '@commerce/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry

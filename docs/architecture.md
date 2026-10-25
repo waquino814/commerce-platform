@@ -79,7 +79,7 @@ A scenario has a name, a seed, a start trigger, a duration, and a ground-truth d
 - Payment provider lookup outage, parking orders in `payment_unknown` with stock held.
 - Bad deploy simulated by a config flag that raises error rates on one endpoint.
 
-From M5a, `FAULTS_ENABLED=true` only makes the scenario control endpoints exist. A scenario starts only through those endpoints, never through an environment variable, and expires on its own.
+From M5a, `FAULTS_ENABLED=true` only makes the scenario control endpoints exist. A scenario starts only through those endpoints, never through an environment variable, and expires on its own. From M5c, `compose.faults.yaml` enables them with the fault-control ports bound to loopback, and `pnpm incident run` refuses to start unless its local-isolation checks pass (`docs/prompts/m5c-design.md`).
 
 ## Incident bundle contract
 

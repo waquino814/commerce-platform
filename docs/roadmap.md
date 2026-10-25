@@ -100,9 +100,9 @@ The design and the 12 acceptance criteria are in `docs/prompts/m4-design.md`, wi
 - **Post-run checks:** the database holds 923 orders with the run's idempotency prefix, every create in the plan, with no duplicate keys. The worker drained its backlog completely: no orders were left pending, processing or in `payment_unknown`.
 - **Prometheus, informational only:** the orders API's own server-side p95 over the run was about 6 ms. It is measured inside the API, not by the load generator, and is not used for the thresholds.
 
-## M5: Fault scenarios and incident bundles (active: M5a and M5b committed, CI not yet confirmed; M5c not approved)
+## M5: Fault scenarios and incident bundles (active: M5a and M5b committed, CI not yet confirmed; M5c implemented, live runs need approval)
 
-The design and its acceptance criteria are in `docs/prompts/m5-design.md`, with ADR 0007 for bundle schema version 1. The repository owner approved M5a and ADR 0007 on 2026-10-25, and M5b's contract addendum and implementation the same day. M5a is committed in `d1579ec`; its GitHub Actions result is not yet confirmed. M5b is committed; its GitHub Actions result is not yet confirmed. M5c is not approved.
+The design and its acceptance criteria are in `docs/prompts/m5-design.md`, with ADR 0007 for bundle schema version 1. The repository owner approved M5a and ADR 0007 on 2026-10-25, and M5b's contract addendum and implementation the same day. M5a is committed in `d1579ec`; its GitHub Actions result is not yet confirmed. M5b is committed; its GitHub Actions result is not yet confirmed. The owner approved M5c's implementation on 2026-10-25, against `docs/prompts/m5c-design.md`. It is committed; its GitHub Actions result is not yet confirmed. Container integration verified that design's open runtime items 1 to 3 on 2026-10-25. The stack runs with `compose.faults.yaml`, the API, worker, Jaeger and Prometheus bound to loopback, from an image that includes M5a, and the CLI's isolation checks pass. Trace volume and Jaeger capture time are unverified; `capture-check` against the stack and every live run need separate approval.
 
 - At least five scenarios from the architecture document are implemented.
 - Each scenario is off by default, verified by a test.

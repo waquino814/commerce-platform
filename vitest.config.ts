@@ -33,6 +33,10 @@ export default defineConfig({
         replacement: fileURLToPath(new URL('./packages/faults/src/index.ts', import.meta.url)),
       },
       {
+        find: /^@commerce\/loadgen$/,
+        replacement: fileURLToPath(new URL('./apps/loadgen/src/index.ts', import.meta.url)),
+      },
+      {
         find: /^@commerce\/telemetry$/,
         replacement: fileURLToPath(new URL('./packages/telemetry/src/index.ts', import.meta.url)),
       },
@@ -84,6 +88,8 @@ export default defineConfig({
         'packages/faults/src/index.ts',
         'packages/incident-bundle/src/index.ts',
         'apps/incident/src/index.ts',
+        // M5c. main.ts is the thin CLI entry; cli.ts and run.ts hold its logic and are tested.
+        'apps/incident/src/main.ts',
       ],
       reporter: ['text', 'json-summary'],
       thresholds: { lines: 80, perFile: true },
