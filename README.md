@@ -11,10 +11,10 @@ It is the first of two repositories in an AI engineering portfolio. The second, 
 - **M3a, Telemetry foundation:** done. All six M3a criteria pass, and GitHub Actions is green for commit `9a73939`.
   - With Compose, the apps send traces through an OpenTelemetry Collector to Jaeger at http://localhost:16686, and Prometheus runs at http://localhost:9090.
   - JSON logs carry `trace_id` and `span_id` inside a request.
-- **M3b, Order trace correlation:** implemented and verified locally; review and the GitHub Actions run are pending.
+- **M3b, Order trace correlation:** done. Implemented in commit `78f0793`. GitHub Actions is green for commit `8a0a941`, which includes it, as confirmed by the repository owner.
   - Every worker pass is its own trace, linked to the order's creation trace.
   - Searching Jaeger by `order.id` finds the creation trace and every pass trace.
-- **M3c, Metrics:** implemented and verified locally; review and the GitHub Actions run are pending.
+- **M3c, Metrics:** done. GitHub Actions is green for commit `8a0a941`, as confirmed by the repository owner. The live Compose checks for criteria 15 and 16 last ran before a final hardening pass, which changed only error reporting, a default constant and tests, and have not been rerun.
   - Request, connection-pool, order-status, worker-pass, payment and claim metrics reach Prometheus through the collector.
   - Labels come from closed sets. Order ids, SKUs, raw URLs and payment references are never labels.
 - **M4 and later:** not started. The load generator, fault injection and the UI are still to come.
@@ -41,7 +41,6 @@ The lifecycle, processing protocol, and API contracts are specified in [docs/pro
 
 ## Planned
 
-- **M3:** OpenTelemetry traces, metrics, and logs, collected locally.
 - **M4:** a deterministic load generator.
 - **M5:** seeded fault scenarios that produce incident bundles with ground truth.
 - **M7:** a React UI, after the Engineering Operations AI UI. See [ADR 0004](docs/decisions/0004-frontend-sequencing.md).

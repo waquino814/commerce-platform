@@ -1,6 +1,6 @@
 # M3 design: observability
 
-Status: design approved. The M3a spike is complete; see "Spike outcome". **M3a is done: implemented in commit `9a73939`, reviewed, and green in GitHub Actions.** **M3b is implemented and verified locally, pending review and the GitHub Actions run.** **M3c is implemented and verified locally, pending review and the GitHub Actions run.**
+Status: design approved. The M3a spike is complete; see "Spike outcome". **M3a is done: implemented in commit `9a73939`, reviewed, and green in GitHub Actions.** **M3b is done: implemented in commit `78f0793`, and green in GitHub Actions with commit `8a0a941`.** **M3c is done: implemented in commit `8a0a941`, reviewed, and green in GitHub Actions, which serves as the clean-copy evidence for criterion 17. The live Compose checks for criteria 15 and 16 last ran before the final hardening pass and have not been rerun.**
 
 ## Scope
 

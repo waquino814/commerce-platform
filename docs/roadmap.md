@@ -47,7 +47,7 @@ Scope and the 36 numbered acceptance criteria are in `docs/prompts/m2-design.md`
 
 Verification: `pnpm test:coverage` runs the deterministic criteria against the Compose Postgres. Criteria 1, 14, 15 and the informational timing check run against `docker compose up --build --wait`.
 
-## M3: Observability
+## M3: Observability (done)
 
 The design and the 17 acceptance criteria are in `docs/prompts/m3-design.md`. Each part has its own commit and CI run. There is no log export through the collector, no telemetry files, and no UI. Those belong to M5 and M7.
 
@@ -58,17 +58,18 @@ The design and the 17 acceptance criteria are in `docs/prompts/m3-design.md`. Ea
 - HTTP and database spans. JSON logs on stdout carry `trace_id` and `span_id` only inside an active span.
 - The collector, Jaeger and Prometheus run in Compose at pinned versions, and their health endpoints answer.
 
-### M3b: Order trace correlation (implemented and verified locally; review and GitHub Actions run pending)
+### M3b: Order trace correlation (done; GitHub Actions green for commit `8a0a941`, confirmed by the repository owner)
 
 - Order creation stores its trace context. Every worker pass starts a new trace whose root span links to the order's creation trace. No trace stays open across retries, reconciliation, or `payment_unknown` rechecks.
 - Searching Jaeger by `order.id` finds the creation trace and every pass trace within 10 seconds.
 - Concurrent passes never share trace context.
 
-### M3c: Metrics (implemented and verified locally; review and GitHub Actions run pending)
+### M3c: Metrics (done; GitHub Actions green for commit `8a0a941`, confirmed by the repository owner)
 
 - Request rate, error rate, latency histograms, orders by status, connection pool usage, and worker and payment counters are visible in Prometheus.
 - Labels are low cardinality, with no order ids or SKUs.
 - Order counts come from a dedicated one-connection metrics pool. Metric failures never affect order processing.
+- Live Compose checks for criteria 15 and 16 last ran before the final hardening pass and have not been rerun.
 
 ### Across M3
 
