@@ -1,0 +1,67 @@
+{
+  "$id": "https://commerce-platform.local/schemas/incident-bundle/v1/trace-record.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": {},
+  "properties": {
+    "resourceSpans": {
+      "items": {
+        "additionalProperties": {},
+        "properties": {
+          "scopeSpans": {
+            "items": {
+              "additionalProperties": {},
+              "properties": {
+                "spans": {
+                  "items": {
+                    "additionalProperties": {},
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "spanId": {
+                        "pattern": "^[0-9a-f]{16}$",
+                        "type": "string"
+                      },
+                      "startTimeUnixNano": {
+                        "pattern": "^\\d+$",
+                        "type": "string"
+                      },
+                      "traceId": {
+                        "pattern": "^[0-9a-f]{32}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "traceId",
+                      "spanId",
+                      "name",
+                      "startTimeUnixNano"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "spans"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "scopeSpans"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "resourceSpans"
+  ],
+  "title": "Incident bundle trace-record (schema 1.0.0)",
+  "type": "object"
+}

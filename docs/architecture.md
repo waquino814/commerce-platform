@@ -23,12 +23,12 @@ Pure order and pricing rules start inside the app that uses them. They move to a
 
 ## Runtime topology
 
-Compose services: `postgres`, one-shot `migrate` and `seed` services, `orders-api` on port 3000, and `worker` with health on port 3001. The apps start after the seed completes. Compose health checks call `/readyz`, so "healthy" means the service can reach Postgres. An init script in `infra/postgres/init` creates the `commerce_test` database used by integration tests. M3 adds `otel-collector`, `jaeger` for traces, and `prometheus` for metrics. Logs stay JSON on stdout, with `trace_id` and `span_id` from M3. In the proposed M5 design, logs are not exported through the collector: the incident CLI writes bundle telemetry files from Jaeger, Prometheus and container logs. See `docs/prompts/m5-design.md`.
+Compose services: `postgres`, one-shot `migrate` and `seed` services, `orders-api` on port 3000, and `worker` with health on port 3001. The apps start after the seed completes. Compose health checks call `/readyz`, so "healthy" means the service can reach Postgres. An init script in `infra/postgres/init` creates the `commerce_test` database used by integration tests. M3 adds `otel-collector`, `jaeger` for traces, and `prometheus` for metrics. Logs stay JSON on stdout, with `trace_id` and `span_id` from M3. From M5b, logs are not exported through the collector: the incident tool's capture clients read Jaeger, Prometheus and container logs, and the bundle writer writes the telemetry files. See `docs/prompts/m5-design.md`.
 
 ```
 loadgen -> orders-api -> postgres <- worker
                  \           |         /
-                  ---> otel-collector ---> jaeger, prometheus   (M3+; read by the M5 incident CLI, proposed)
+                  ---> otel-collector ---> jaeger, prometheus   (M3+; read by the M5 incident capture)
 ```
 
 ## Order processing

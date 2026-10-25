@@ -6,8 +6,10 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/orders-api/package.json apps/orders-api/
 COPY apps/worker/package.json apps/worker/
-# Built with the workspace (the root build references it), but not part of the runtime image.
+# Host tools: built with the workspace (the root build references them), but not part of the
+# runtime image.
 COPY apps/loadgen/package.json apps/loadgen/
+COPY apps/incident/package.json apps/incident/
 COPY packages/db/package.json packages/db/
 COPY packages/telemetry/package.json packages/telemetry/
 COPY packages/incident-bundle/package.json packages/incident-bundle/
@@ -23,6 +25,7 @@ COPY packages/faults packages/faults
 COPY apps/orders-api apps/orders-api
 COPY apps/worker apps/worker
 COPY apps/loadgen apps/loadgen
+COPY apps/incident apps/incident
 RUN pnpm build
 
 FROM base AS prod-deps

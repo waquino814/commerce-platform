@@ -100,9 +100,9 @@ The design and the 12 acceptance criteria are in `docs/prompts/m4-design.md`, wi
 - **Post-run checks:** the database holds 923 orders with the run's idempotency prefix, every create in the plan, with no duplicate keys. The worker drained its backlog completely: no orders were left pending, processing or in `payment_unknown`.
 - **Prometheus, informational only:** the orders API's own server-side p95 over the run was about 6 ms. It is measured inside the API, not by the load generator, and is not used for the thresholds.
 
-## M5: Fault scenarios and incident bundles (active: M5a implemented locally; M5b and M5c proposed)
+## M5: Fault scenarios and incident bundles (active: M5a and M5b committed, CI not yet confirmed; M5c not approved)
 
-The design and its acceptance criteria are in `docs/prompts/m5-design.md`, with ADR 0007 for bundle schema version 1. The repository owner approved M5a and ADR 0007 on 2026-10-25; M5b and M5c remain proposed. M5a is implemented and passes the local gates; its commit and GitHub Actions run are pending.
+The design and its acceptance criteria are in `docs/prompts/m5-design.md`, with ADR 0007 for bundle schema version 1. The repository owner approved M5a and ADR 0007 on 2026-10-25, and M5b's contract addendum and implementation the same day. M5a is committed in `d1579ec`; its GitHub Actions result is not yet confirmed. M5b is committed; its GitHub Actions result is not yet confirmed. M5c is not approved.
 
 - At least five scenarios from the architecture document are implemented.
 - Each scenario is off by default, verified by a test.

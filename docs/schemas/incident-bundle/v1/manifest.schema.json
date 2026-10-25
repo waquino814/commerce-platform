@@ -1,0 +1,563 @@
+{
+  "$id": "https://commerce-platform.local/schemas/incident-bundle/v1/manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": {},
+  "properties": {
+    "bundleId": {
+      "pattern": "^[a-z][a-z0-9-]*-\\d+-\\d{8}T\\d{6}Z$",
+      "type": "string"
+    },
+    "capture": {
+      "additionalProperties": {},
+      "properties": {
+        "logs": {
+          "additionalProperties": {},
+          "properties": {
+            "services": {
+              "items": {
+                "additionalProperties": {},
+                "properties": {
+                  "droppedAdminLines": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "pattern": "^[a-z][a-z0-9-]*$",
+                    "type": "string"
+                  },
+                  "nonJsonLines": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "records": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "name",
+                  "records",
+                  "nonJsonLines",
+                  "droppedAdminLines"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "source": {
+              "const": "docker-compose",
+              "type": "string"
+            }
+          },
+          "required": [
+            "source",
+            "services"
+          ],
+          "type": "object"
+        },
+        "metrics": {
+          "additionalProperties": {},
+          "properties": {
+            "series": {
+              "items": {
+                "additionalProperties": {},
+                "properties": {
+                  "name": {
+                    "pattern": "^[a-zA-Z_:][a-zA-Z0-9_:]*$",
+                    "type": "string"
+                  },
+                  "seriesCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "name",
+                  "seriesCount"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "source": {
+              "const": "prometheus",
+              "type": "string"
+            },
+            "stepSeconds": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "source",
+            "stepSeconds",
+            "series"
+          ],
+          "type": "object"
+        },
+        "traces": {
+          "additionalProperties": {},
+          "properties": {
+            "droppedAdminSpans": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxTracesPerService": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "minSliceSeconds": {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            "searchDepth": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "services": {
+              "items": {
+                "additionalProperties": {},
+                "properties": {
+                  "name": {
+                    "pattern": "^[a-z][a-z0-9-]*$",
+                    "type": "string"
+                  },
+                  "saturatedSlices": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "traces": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  },
+                  "truncationReasons": {
+                    "items": {
+                      "enum": [
+                        "slice_saturated",
+                        "service_cap"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "name",
+                  "traces",
+                  "saturatedSlices",
+                  "truncated",
+                  "truncationReasons"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "sliceSeconds": {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            "source": {
+              "const": "jaeger-v3",
+              "type": "string"
+            }
+          },
+          "required": [
+            "source",
+            "sliceSeconds",
+            "minSliceSeconds",
+            "searchDepth",
+            "maxTracesPerService",
+            "droppedAdminSpans",
+            "services"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "traces",
+        "metrics",
+        "logs"
+      ],
+      "type": "object"
+    },
+    "createdAt": {
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d\\.\\d{3}(?:Z))$",
+      "type": "string"
+    },
+    "detection": {
+      "additionalProperties": {},
+      "properties": {
+        "deadlineSeconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        },
+        "detectedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d\\.\\d{3}(?:Z))$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latencyMs": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "detectedAt",
+        "latencyMs",
+        "deadlineSeconds"
+      ],
+      "type": "object"
+    },
+    "files": {
+      "additionalProperties": {},
+      "properties": {
+        "ground_truth.json": {
+          "additionalProperties": {},
+          "properties": {
+            "bytes": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "records": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "sha256": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sha256",
+            "bytes",
+            "records"
+          ],
+          "type": "object"
+        },
+        "logs.jsonl": {
+          "additionalProperties": {},
+          "properties": {
+            "bytes": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "records": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "sha256": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sha256",
+            "bytes",
+            "records"
+          ],
+          "type": "object"
+        },
+        "metrics.jsonl": {
+          "additionalProperties": {},
+          "properties": {
+            "bytes": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "records": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "sha256": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sha256",
+            "bytes",
+            "records"
+          ],
+          "type": "object"
+        },
+        "traces.jsonl": {
+          "additionalProperties": {},
+          "properties": {
+            "bytes": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "records": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "sha256": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sha256",
+            "bytes",
+            "records"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "ground_truth.json",
+        "traces.jsonl",
+        "metrics.jsonl",
+        "logs.jsonl"
+      ],
+      "type": "object"
+    },
+    "infrastructure": {
+      "additionalProperties": {},
+      "properties": {
+        "images": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "images"
+      ],
+      "type": "object"
+    },
+    "load": {
+      "additionalProperties": {},
+      "properties": {
+        "planHash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "profile": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
+        "runPrefix": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "seed": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "profile",
+        "seed",
+        "planHash",
+        "runPrefix"
+      ],
+      "type": "object"
+    },
+    "producer": {
+      "additionalProperties": {},
+      "properties": {
+        "commit": {
+          "pattern": "^[0-9a-f]{40}$",
+          "type": "string"
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "repository": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "commit",
+        "dirty"
+      ],
+      "type": "object"
+    },
+    "scenario": {
+      "additionalProperties": {},
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
+        "seed": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "version": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "seed"
+      ],
+      "type": "object"
+    },
+    "schemaVersion": {
+      "pattern": "^1\\.\\d+\\.\\d+$",
+      "type": "string"
+    },
+    "services": {
+      "items": {
+        "additionalProperties": {},
+        "properties": {
+          "instanceId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "type": "string"
+          },
+          "version": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "instanceId"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "trigger": {
+      "additionalProperties": {},
+      "properties": {
+        "requestedDurationMs": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        },
+        "startedAt": {
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d\\.\\d{3}(?:Z))$",
+          "type": "string"
+        },
+        "stoppedAt": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d\\.\\d{3}(?:Z))$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "startedAt",
+        "stoppedAt",
+        "requestedDurationMs"
+      ],
+      "type": "object"
+    },
+    "window": {
+      "additionalProperties": {},
+      "properties": {
+        "captureFrom": {
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d\\.\\d{3}(?:Z))$",
+          "type": "string"
+        },
+        "captureTo": {
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d\\.\\d{3}(?:Z))$",
+          "type": "string"
+        },
+        "loadEndedAt": {
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d\\.\\d{3}(?:Z))$",
+          "type": "string"
+        },
+        "loadStartedAt": {
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d\\.\\d{3}(?:Z))$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "loadStartedAt",
+        "loadEndedAt",
+        "captureFrom",
+        "captureTo"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "bundleId",
+    "createdAt",
+    "scenario",
+    "window",
+    "trigger",
+    "detection",
+    "producer",
+    "services",
+    "infrastructure",
+    "load",
+    "capture",
+    "files"
+  ],
+  "title": "Incident bundle manifest (schema 1.0.0)",
+  "type": "object"
+}

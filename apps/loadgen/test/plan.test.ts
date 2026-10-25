@@ -161,8 +161,8 @@ describe('plan contents for steady/42 (criterion 2)', () => {
 });
 
 describe('profiles', () => {
-  it('is a closed registry with steady only', () => {
-    expect(profileNames()).toEqual(['steady']);
+  it('is a closed registry with steady and incident', () => {
+    expect(profileNames()).toEqual(['incident', 'steady']);
     expect(getProfile('steady')).toBe(STEADY);
     expect(getProfile('burst')).toBeUndefined();
     expect(getProfile('toString')).toBeUndefined();

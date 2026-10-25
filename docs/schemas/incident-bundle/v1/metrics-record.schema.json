@@ -1,0 +1,46 @@
+{
+  "$id": "https://commerce-platform.local/schemas/incident-bundle/v1/metrics-record.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": {},
+  "properties": {
+    "labels": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "propertyNames": {
+        "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "name": {
+      "pattern": "^[a-zA-Z_:][a-zA-Z0-9_:]*$",
+      "type": "string"
+    },
+    "samples": {
+      "items": {
+        "items": false,
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "type": "number"
+          },
+          {
+            "pattern": "^(?:NaN|[+-]Inf|[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?)$",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "labels",
+    "samples"
+  ],
+  "title": "Incident bundle metrics-record (schema 1.0.0)",
+  "type": "object"
+}

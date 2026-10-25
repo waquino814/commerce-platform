@@ -74,6 +74,8 @@ export default defineConfig({
         'apps/worker/src/admin.ts',
         'apps/worker/src/faults.ts',
         'apps/worker/src/faults-config.ts',
+        // M5b: the capture clients.
+        'apps/incident/src/**/*.ts',
       ],
       exclude: [
         'packages/telemetry/src/register.ts',
@@ -81,6 +83,7 @@ export default defineConfig({
         'apps/loadgen/src/main.ts',
         'packages/faults/src/index.ts',
         'packages/incident-bundle/src/index.ts',
+        'apps/incident/src/index.ts',
       ],
       reporter: ['text', 'json-summary'],
       thresholds: { lines: 80, perFile: true },

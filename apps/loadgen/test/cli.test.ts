@@ -67,7 +67,7 @@ describe('config and CLI validation (criterion 10)', () => {
     [['--seed', '42'], /--profile is required/],
     [
       ['--profile', 'burst', '--seed', '42'],
-      /--profile: unknown profile "burst"; available: steady/,
+      /--profile: unknown profile "burst"; available: incident, steady/,
     ],
     [['--profile', 'steady'], /--seed is required/],
     [['--profile', 'steady', '--seed', 'abc'], /--seed: must be an integer/],

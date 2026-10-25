@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import {
+  identifier,
+  PROMETHEUS_LABEL,
+  PROMETHEUS_NAME,
+  schemaVersion1,
+  text,
+  uint32,
+} from './formats.js';
 
 /**
  * Incident bundle schema version 1: the ground-truth document (ADR 0007,
@@ -8,18 +16,13 @@ import { z } from 'zod';
  */
 export const SCHEMA_VERSION = '1.0.0';
 
-export const IDENTIFIER = /^[a-z][a-z0-9-]*$/;
-const identifier = z.string().regex(IDENTIFIER);
-const text = z.string().min(1);
-const uint32 = z.number().int().min(0).max(0xffffffff);
-
 /** A metric condition, rendered by consumers for their own backend. */
 export const conditionSchema = z.looseObject({
   signal: z.literal('metric'),
   /** Prometheus name, as produced by the collector's translation. */
-  metric: z.string().regex(/^[a-zA-Z_:][a-zA-Z0-9_:]*$/),
+  metric: z.string().regex(PROMETHEUS_NAME),
   /** Exact-equality label matchers. */
-  matchers: z.record(z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/), z.string()),
+  matchers: z.record(z.string().regex(PROMETHEUS_LABEL), z.string()),
   evaluation: z.enum(['increase', 'max_over_time']),
   windowSeconds: z.number().int().positive(),
   comparison: z.enum(['gt', 'gte', 'lt', 'lte']),
@@ -29,7 +32,7 @@ export const conditionSchema = z.looseObject({
 });
 
 export const groundTruthSchema = z.looseObject({
-  schemaVersion: z.string().regex(/^1\.\d+\.\d+$/),
+  schemaVersion: schemaVersion1,
   scenario: z.looseObject({
     name: identifier,
     version: z.number().int().positive(),

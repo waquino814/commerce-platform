@@ -21,6 +21,9 @@
     },
     {
       "path": "apps/loadgen"
+    },
+    {
+      "path": "apps/incident"
     }
   ]
 }

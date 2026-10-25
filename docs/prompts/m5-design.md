@@ -1,6 +1,6 @@
 # M5 design: fault scenarios and incident bundles
 
-Status: **M5a approved by the repository owner on 2026-10-25. The M5b contract addendum is approved as design on 2026-10-25; M5b implementation and M5c remain not approved.** M5a is committed in `d1579ec`; its GitHub Actions result is not yet confirmed. The bundle contract is recorded in ADR 0007.
+Status: **M5a approved by the repository owner on 2026-10-25. The M5b contract addendum and M5b implementation were approved on 2026-10-25; M5c is not approved.** M5a is committed in `d1579ec`; its GitHub Actions result is not yet confirmed. M5b is committed; its GitHub Actions result is not yet confirmed. The bundle contract is recorded in ADR 0007.
 
 ## Scope
 
@@ -386,12 +386,17 @@ Consequences: without `query.searchDepth`, a search silently returns at most 100
 
   Its golden hash is recorded in a new test only after its plan contents are checked, as M4 did for steady. The steady profile's golden hash must stay unchanged.
 
-- **Approved exception to "all M2 to M4 tests keep passing, unchanged":** `apps/loadgen/test/cli.test.ts:70` asserts `/--profile: unknown profile "burst"; available: steady/`. Registering a second profile changes the message to `available: incident, steady`, so the assertion becomes `/--profile: unknown profile "burst"; available: incident, steady/`. That is the only change to an existing test. M4's design allows it ("Profiles are a closed registry. M5 may add profiles, such as bursts, each with its own golden hash test"). The CLI's behavior for valid profiles doesn't change.
+- **Approved exceptions to "all M2 to M4 tests keep passing, unchanged":** registering a second profile changes two existing loadgen assertions, and the owner approved exactly these two updates:
+  - `apps/loadgen/test/cli.test.ts`: the available-profile expectation `/--profile: unknown profile "burst"; available: steady/` becomes `/--profile: unknown profile "burst"; available: incident, steady/`.
+  - `apps/loadgen/test/plan.test.ts`: the registry test's description becomes "is a closed registry with steady and incident" and its expected names `['steady']` become `['incident', 'steady']`. Its other three assertions are unchanged.
+
+  No other existing test changes. M4's design allows them ("Profiles are a closed registry. M5 may add profiles, such as bursts, each with its own golden hash test"). The CLI's behavior for valid profiles doesn't change.
+
 - _Alternatives:_
   - keep `INCIDENT` outside the registry, so no M4 test changes but `pnpm loadgen --profile incident --dry-run` can't show its hash;
   - change the error message format, which is a larger M4 behavior change.
 - **Contract impact:** the manifest's `load.profile` is `"incident"`, and its `planHash` is reproducible from the profile and seed.
-- **Tests (B5):** the incident/42 golden hash; a different seed gives a different hash; the plan summary (1,500 entries, no warm-up, the mix shares); the steady/42 golden hash unchanged; the updated CLI assertion.
+- **Tests (B5):** the incident/42 golden hash; a different seed gives a different hash; the plan summary (1,500 entries, no warm-up, the mix shares); the steady/42 golden hash unchanged; the two updated registry assertions.
 
 ### Unresolved
 

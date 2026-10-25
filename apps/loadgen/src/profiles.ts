@@ -1,5 +1,6 @@
 /**
- * Traffic profiles: a closed registry (docs/prompts/m4-design.md, "The `steady` profile").
+ * Traffic profiles: a closed registry (docs/prompts/m4-design.md, "The `steady` profile"; M5 adds
+ * `incident`).
  * Every value here is part of the plan's definition, so changing one changes the plan hash.
  */
 export type PaymentMethod = 'pm_card_ok' | 'pm_card_declined';
@@ -46,7 +47,22 @@ export const STEADY: Profile = Object.freeze({
   orderReadMinAgeMs: 1_000,
 });
 
-export const PROFILES: Readonly<Record<string, Profile>> = Object.freeze({ steady: STEADY });
+/**
+ * 10 rps for 150 s with no warm-up: background traffic for an M5 incident run
+ * (docs/prompts/m5-design.md, "`incident` load profile"); 1,500 entries. Otherwise the steady rules.
+ */
+export const INCIDENT: Profile = Object.freeze({
+  ...STEADY,
+  name: 'incident',
+  ratePerSecond: 10,
+  durationMs: 150_000,
+  warmupMs: 0,
+});
+
+export const PROFILES: Readonly<Record<string, Profile>> = Object.freeze({
+  incident: INCIDENT,
+  steady: STEADY,
+});
 
 export function profileNames(): string[] {
   return Object.keys(PROFILES).sort();
