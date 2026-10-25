@@ -1,6 +1,6 @@
 # M4 design: load generation
 
-Status: **approved.** Every design choice below has been resolved with the repository owner. **Implemented and verified locally; the local performance check (criterion 11) and the GitHub Actions run are pending.** The determinism decision is recorded in ADR 0006.
+Status: **approved.** Every design choice below has been resolved with the repository owner. **Implemented in commit `5f6f6eb`, and green in GitHub Actions, as confirmed by the repository owner. Acceptance criteria 1 to 10 and 12 pass. Criterion 11, the local performance check, has not been run. It needs the repository owner's explicit approval, because it creates about 923 real orders and consumes stock in the Compose database. M4 is not complete until it passes.** The determinism decision is recorded in ADR 0006.
 
 ## Scope
 

@@ -76,9 +76,9 @@ The design and the 17 acceptance criteria are in `docs/prompts/m3-design.md`. Ea
 - Telemetry failures, including a stopped collector, never change order outcomes or health.
 - M2 behavior, tests and shutdown contract stay intact. The telemetry flush at shutdown is best effort and capped at 300 ms.
 
-## M4: Load generation (implemented and verified locally; the local performance check and GitHub Actions run are pending)
+## M4: Load generation (implemented; GitHub Actions green for commit `5f6f6eb`, confirmed by the repository owner; criterion 11 pending)
 
-The design and the 12 acceptance criteria are in `docs/prompts/m4-design.md`, with ADR 0006.
+The design and the 12 acceptance criteria are in `docs/prompts/m4-design.md`, with ADR 0006. Criteria 1 to 10 and 12 pass. Criterion 11, the local performance check, has not been run. It needs the repository owner's explicit approval, because it creates about 923 real orders and consumes stock in the Compose database. M4 is not complete until it passes.
 
 - `pnpm loadgen --profile steady --seed 42` produces the same request sequence on every run.
 - The steady profile sustains at least 50 requests per second locally with p95 latency under 200 ms and error rate under 1%.
