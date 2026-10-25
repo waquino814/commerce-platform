@@ -1,6 +1,6 @@
 # M5 design: fault scenarios and incident bundles
 
-Status: **M5a approved by the repository owner on 2026-10-25; M5b and M5c remain proposed, not approved.** M5a is implemented and passes the local gates; its commit and GitHub Actions run are pending. The bundle contract is recorded in ADR 0007.
+Status: **M5a approved by the repository owner on 2026-10-25. The M5b contract addendum is approved as design on 2026-10-25; M5b implementation and M5c remain not approved.** M5a is committed in `d1579ec`; its GitHub Actions result is not yet confirmed. The bundle contract is recorded in ADR 0007.
 
 ## Scope
 
@@ -178,13 +178,227 @@ The contract is defined in ADR 0007. In summary:
 
 After the run, the CLI reads the backends that already exist. It adds no new dependency, changes no collector configuration, and changes no app logging.
 
-| File            | Source                                                                                                                                                                                                                                                                                                                                                                                            |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `traces.jsonl`  | Jaeger's v3 API: traces for `orders-api` and `worker` in the run window, at most 5,000 per service, with truncation recorded in the manifest. **To verify in M5b:** that Jaeger 2.22's v3 search accepts a result limit that large, and which parameter sets it. Jaeger returns the spans of all matching traces in one OTLP JSON response, so the capture regroups them into one trace per line. |
-| `metrics.jsonl` | Prometheus `query_range` for the 11 catalog metrics over the window plus 1 minute on each side, at a 5 s step.                                                                                                                                                                                                                                                                                    |
-| `logs.jsonl`    | `docker compose logs --no-log-prefix --since --until` for `orders-api` and `worker`, parsed as the apps' pino JSON. Lines that are not JSON are kept as plain messages.                                                                                                                                                                                                                           |
+| File            | Source                                                                                                                                                                                                                                                                                                                                                                                                    |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `traces.jsonl`  | Jaeger's v3 API: traces for `orders-api` and `worker` in the run window, at most 5,000 per service, with truncation recorded in the manifest. The result-limit parameter, `query.searchDepth`, is verified in Jaeger's v2.22.0 source; see "Jaeger trace capture" below. Jaeger returns the spans of all matching traces in one OTLP JSON response, so the capture regroups them into one trace per line. |
+| `metrics.jsonl` | Prometheus `query_range` for the 11 catalog metrics over the window plus 1 minute on each side, at a 5 s step.                                                                                                                                                                                                                                                                                            |
+| `logs.jsonl`    | `docker compose logs --no-log-prefix --timestamps --since --until`, once per service, for `orders-api` and `worker`, parsed as the apps' pino JSON. Lines that are not JSON are kept as plain messages.                                                                                                                                                                                                   |
 
 **M3's deferred log export:** M3 moved log export through the collector, and telemetry files, to M5. This design resolves that without new OpenTelemetry log packages. The logs are captured from container stdout, and the incident CLI writes the telemetry files. M5b updates `docs/architecture.md` to match.
+
+## M5b contract addendum
+
+This section makes the M5b contract concrete. The repository owner approved it as design on 2026-10-25; M5b implementation needs separate approval. Facts are cited to the repository or to Jaeger's v2.22.0 source. Choices those facts do not dictate, such as slice sizes, are decisions, and are marked as such.
+
+### Bundle documents
+
+All objects are loose (`z.looseObject`), as ADR 0007 requires: a consumer ignores fields it does not know, and a 1.x producer may add optional fields. Timestamps are ISO 8601 UTC strings with milliseconds, such as `2026-10-25T14:03:07.250Z`. Identifiers follow ADR 0007's open vocabulary, `^[a-z][a-z0-9-]*$`.
+
+**`manifest.json`.** Volatile, never compared byte for byte. Written as canonical JSON, like the ground truth, so diffs stay readable.
+
+| Field            | Type                                                                                                        | Required           | Content                                                                                                                                                                                              |
+| ---------------- | ----------------------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion`  | semver string                                                                                               | yes                | `"1.0.0"`. The validator accepts major 1 only.                                                                                                                                                       |
+| `bundleId`       | string                                                                                                      | yes                | `<scenario>-<seed>-<timestamp>`, equal to the directory name. The timestamp is `YYYYMMDDTHHMMSSZ`.                                                                                                   |
+| `createdAt`      | timestamp                                                                                                   | yes                | When the writer started.                                                                                                                                                                             |
+| `scenario`       | `{ name, version, seed }`                                                                                   | yes                | The same values as in `ground_truth.json`; the validator checks that they agree.                                                                                                                     |
+| `window`         | `{ loadStartedAt, loadEndedAt, captureFrom, captureTo }`                                                    | yes                | `captureFrom` and `captureTo` bound the telemetry queries.                                                                                                                                           |
+| `trigger`        | `{ startedAt, stoppedAt, requestedDurationMs }`                                                             | yes                | The actual trigger window. `stoppedAt` is a timestamp or `null` if the stop was not confirmed.                                                                                                       |
+| `detection`      | `{ detectedAt, latencyMs, deadlineSeconds }`                                                                | yes                | The observed primary-symptom detection. `detectedAt` and `latencyMs` are `null` when it was not detected.                                                                                            |
+| `producer`       | `{ repository, commit, dirty }`                                                                             | yes                | `"commerce-platform"`, the 40-character lowercase commit hash, and whether the working tree had changes.                                                                                             |
+| `services`       | array of `{ name, version, instanceId }`                                                                    | yes, at least one  | The services that produced telemetry.                                                                                                                                                                |
+| `infrastructure` | `{ images: { <service>: <image ref> } }`                                                                    | yes                | Image tags, such as `"jaeger": "jaegertracing/jaeger:2.22.0"`.                                                                                                                                       |
+| `load`           | `{ profile, seed, planHash, runPrefix }`                                                                    | yes                | From M4. `planHash` is 64 lowercase hex characters.                                                                                                                                                  |
+| `capture`        | object, below                                                                                               | yes                | How the telemetry was captured, including truncation.                                                                                                                                                |
+| `files`          | `{ "ground_truth.json", "traces.jsonl", "metrics.jsonl", "logs.jsonl" }`, each `{ sha256, bytes, records }` | yes, all four keys | `sha256` is 64 lowercase hex characters of the file's bytes; `bytes` is its size; `records` is 1 for `ground_truth.json` and the line count for a JSONL file. The manifest does not describe itself. |
+
+`capture` contains:
+
+- `traces`: `{ source: "jaeger-v3", sliceSeconds, minSliceSeconds, searchDepth, maxTracesPerService, droppedAdminSpans, services: [{ name, traces, saturatedSlices, truncated, truncationReasons }] }`. `truncationReasons` is a subset of `["slice_saturated", "service_cap"]`.
+- `metrics`: `{ source: "prometheus", stepSeconds, series: [{ name, seriesCount }] }`, one entry per Prometheus name below, including those with no series.
+- `logs`: `{ source: "docker-compose", services: [{ name, records, nonJsonLines, droppedAdminLines }] }`.
+
+**JSONL rules.** UTF-8. Every record is one line ending in `\n`, and there are no blank lines. An empty file has zero records and is valid.
+
+**`metrics.jsonl`.** One Prometheus series per line, sorted by `name` and then by the canonical JSON of `labels`:
+
+```json
+{
+  "name": "commerce_payment_calls_total",
+  "labels": {
+    "instance": "…",
+    "job": "worker",
+    "payment_operation": "charge",
+    "payment_replayed": "false",
+    "payment_result": "error"
+  },
+  "samples": [
+    [1792940630, "3"],
+    [1792940635, "5"]
+  ]
+}
+```
+
+- `name`: the Prometheus metric name. `labels`: every label except `__name__`, all string values.
+- `samples`: `[unixSeconds, value]` pairs in ascending time order. `unixSeconds` is a number. `value` is the string Prometheus returns, unchanged. **Why a string:** Prometheus's HTTP API itself returns sample values as strings, and a value can be `NaN`, `+Inf` or `-Inf`, for example a histogram's `+Inf` bucket bound or a rate over no data. JSON numbers cannot represent those, so converting would either fail or lose them. Consumers parse the string as a float.
+
+**`logs.jsonl`.** One normalized record per line, in time order per service, with the services concatenated in name order:
+
+```json
+{
+  "service": "orders-api",
+  "time": "2026-10-25T14:03:07.250Z",
+  "level": "error",
+  "message": "request errored",
+  "attributes": { "reqId": "req-1f", "err": { "…": "…" } },
+  "trace_id": "…32 hex…",
+  "span_id": "…16 hex…"
+}
+```
+
+`service`, `time`, `level`, `message` and `attributes` are required. `trace_id` (32 hex) and `span_id` (16 hex) are present only when the source line had them.
+
+**`traces.jsonl`.** One trace per line, as an OTLP JSON `TracesData` object, `{ "resourceSpans": [...] }`. Validation is **structural, not semantic**:
+
+- checked: the line is an object with a non-empty `resourceSpans` array; each entry has a `scopeSpans` array; each span has a string `name`, a 32-hex `traceId`, a 16-hex `spanId` and a string `startTimeUnixNano`; and every span on a line has the same `traceId`;
+- not checked: the rest of OTLP, such as parent links, span kinds, attribute value types and timestamp order. All objects stay loose.
+
+The hex IDs follow Jaeger's JSON output. The M3 e2e script matches the `traceId` from `/api/v3/traces` against the hex `trace_id` in the apps' logs.
+
+**Contract impact.** The Engineering Operations AI repository validates these files with the committed JSON Schema files. Required fields and their types bind it from 1.0.0 on. Adding optional fields later is a minor version. Structural trace validation lets it use any OTLP reader without the schema rejecting valid OTLP.
+
+**Tests (B1, B2, B3).**
+
+- A drift test for each generated JSON Schema file: `manifest`, `metrics-record`, `logs-record` and `trace-record`.
+- Loose objects accept unknown fields.
+- One valid fixture bundle passes.
+- One fixture per defect fails with the file and field named: a missing file, a malformed JSON line, a line that breaks its schema, a trace line mixing two trace IDs, each of a SHA-256, byte or record mismatch, major version 2, and a manifest whose scenario disagrees with the ground truth.
+- The writer's output validates.
+- An interrupted write leaves no directory under the final name.
+- Writing to an existing bundle directory fails.
+
+### Package boundaries
+
+- `packages/incident-bundle`: schemas, generated JSON Schema files, the canonical JSON writer, the bundle writer and the validator. It does file I/O, using `node:fs` and `node:crypto`, but no network calls and no child processes.
+- **Decision:** create `apps/incident` in M5b with only `src/capture/` (`jaeger.ts`, `prometheus.ts`, `logs.ts`), each taking injected dependencies:
+  - `fetch`;
+  - `runCommand(command, args) => Promise<{ exitCode, stdout, stderr }>`;
+  - a clock.
+
+  There is no `main.ts`, `bin` or `incident` script until M5c. The capture modules join the enforced coverage list.
+
+- _Alternatives:_ capture inside `packages/incident-bundle` would mix child processes and HTTP into the contract package. A separate `packages/telemetry-capture` would add a package whose only consumer is the CLI.
+- **Contract impact:** none. The consumer sees only the files.
+- **Tests:** each client is tested only against stubs. No test reaches Jaeger, Prometheus or Docker.
+
+### Prometheus capture
+
+The capture makes one `GET /api/v1/query_range` per Prometheus name, with the bare name as the query, from `captureFrom − 60 s` to `captureTo + 60 s`, at a 5 s step. These are the M3 catalog's translated names (`docs/prompts/m3-design.md`, "Metrics"), which the M3 spike confirmed against collector 0.162.0 and Prometheus v3.15.0:
+
+| Catalog metric                          | Kind                       | Prometheus names                                                |
+| --------------------------------------- | -------------------------- | --------------------------------------------------------------- |
+| `http.server.request.duration`          | histogram                  | `http_server_request_duration_seconds_bucket`, `_count`, `_sum` |
+| `db.client.connection.count`            | observable up-down counter | `db_client_connection_count`                                    |
+| `db.client.connection.pending_requests` | observable up-down counter | `db_client_connection_pending_requests`                         |
+| `db.client.connection.max`              | observable up-down counter | `db_client_connection_max`                                      |
+| `commerce.orders`                       | observable gauge           | `commerce_orders`                                               |
+| `commerce.worker.passes`                | counter                    | `commerce_worker_passes_total`                                  |
+| `commerce.worker.inflight`              | observable gauge           | `commerce_worker_inflight`                                      |
+| `commerce.payment.calls`                | counter                    | `commerce_payment_calls_total`                                  |
+| `commerce.payment.duration`             | histogram                  | `commerce_payment_duration_seconds_bucket`, `_count`, `_sum`    |
+| `commerce.claims.recovered`             | counter                    | `commerce_claims_recovered_total`                               |
+| `commerce.claims.released`              | counter                    | `commerce_claims_released_total`                                |
+
+That is 15 names for 11 metrics. A name with no series, such as an unused counter, is valid and is recorded with `seriesCount: 0`. At most about 60 points per series, well under Prometheus's 11,000-point limit.
+
+**Completeness test.** It declares the kind of each catalog metric. It then asserts that the kind table's keys equal `Object.values(METRIC)`, and that the capture's name list equals what the translation rule gives from that table. So a new catalog metric without a mapping fails the test. Further tests: query parameters, empty results, label handling (`__name__` removed, `le` kept), sorting, and a non-200 response failing with the metric name.
+
+### Log capture and normalization
+
+- **Command, per service:** `docker compose logs --no-log-prefix --timestamps --since <captureFrom> --until <captureTo> <service>`, for `orders-api` and `worker` separately. Without the prefix, two services in one call could not be told apart.
+  - `--timestamps` gives every line, including one that is not JSON, a time. The capture strips the timestamp prefix before parsing.
+- **pino fields,** as configured in both apps' `main.ts`. A line looks like `{"level":30,"time":1792940632657,"service":"orders-api",…,"msg":"…"}`. The mixin adds `trace_id` and `span_id`.
+- **Level:** `10 trace`, `20 debug`, `30 info`, `40 warn`, `50 error`, `60 fatal`, from pino's `levels.values`. Any other value becomes `"unknown"`, with the original kept as `attributes.pinoLevel`.
+- **Time:** `new Date(time).toISOString()` from pino's epoch milliseconds. If `time` is missing or not a finite number, the Docker timestamp is used instead.
+- **Message:** `msg`, or `""` when absent.
+- **Attributes:** every other field except `level`, `time`, `msg`, `service`, `trace_id` and `span_id`. That includes the worker's `workerId`, and Fastify's `reqId`, `req`, `res` and `err`.
+- **Lines that aren't JSON,** including JSON that is not an object: `level: "unknown"`, `message` is the raw line, `attributes: {}`, and the time comes from the Docker timestamp. They are counted in `nonJsonLines`.
+- **`/admin` filter:** a record is dropped when `req.url` is a string whose path, before any `?`, is exactly `/admin` or starts with `/admin/`. This uses the same rule as `ADMIN_PATH_PREFIX` in `packages/telemetry`, so `/administrator` and `/products/admin` are kept. Dropped records are counted in `droppedAdminLines`.
+  - **Follow-up records:** Fastify logs `req.url` only on "incoming request"; its "request completed" line has `reqId` and `res`, but no URL. A later record from the same service is also dropped when its `reqId` equals a dropped request's `reqId`, but only where that link is reliable. Fastify's `reqId` is a per-process counter, so the link holds within one container lifetime: it ends at the next "incoming request" with the same `reqId`, or at a container restart, detected by the counter starting over. A record whose link cannot be established this way is kept, never guessed.
+  - Both are second guards. M5a already logs `/admin` requests only at `warn` and above, which normal requests never reach.
+- **Tests:** each level mapping; time conversion; the Docker-timestamp fallback; lines that aren't JSON; trace fields present and absent; `/admin`, `/admin/x?y` and `/admin` with a query dropped; `/administrator`, `/products/admin` and probes kept; the `reqId` follow-up dropped; per-service ordering; and a failing `runCommand` reported with its stderr.
+
+### Jaeger trace capture
+
+**Verified in Jaeger v2.22.0 source** (paths under `github.com/jaegertracing/jaeger`, tag `v2.22.0`):
+
+- `cmd/jaeger/internal/extension/jaegerquery/internal/apiv3/query_parser.go`:
+  - the result limit is `query.searchDepth` (`paramSearchDepth`);
+  - `query.search_depth` and `query.num_traces` are deprecated aliases;
+  - the value is parsed with `strconv.ParseUint(n, 10, 32)`.
+- `cmd/jaeger/internal/extension/jaegerquery/querysvc/conversion.go`, `toReaderQuery`:
+  - both `query.startTimeMin` and `query.startTimeMax` are required, and min must be before max;
+  - a depth above `tracestore.MaxSearchDepth` is refused with "search depth must be in [0, 10000]";
+  - a depth of 0 becomes `DefaultSearchDepth`.
+- `internal/storage/v2/api/tracestore/reader.go`: `const MaxSearchDepth uint32 = 10000`.
+- `cmd/jaeger/internal/extension/jaegerquery/querysvc/service.go`:
+  - `const DefaultSearchDepth uint32 = 100`;
+  - `FindTraces` refuses pagination (`ErrPaginationUnsupportedByFindTraces`), so `/api/v3/traces` cannot page.
+- `internal/storage/v2/memory/tenant.go`, `findTraceAndIds`:
+  - the in-memory store walks its ring buffer from the most recently inserted trace backwards, and stops after `SearchDepth` matches;
+  - a trace matches if any of its spans for the service starts within `[startTimeMin, startTimeMax]`, both ends included (`spanStartsWithin`);
+  - a depth above the store's `max_traces` is refused.
+- `cmd/jaeger/internal/all-in-one.yaml`, embedded by `cmd/jaeger/internal/command.go` as the default config when none is given, as in our Compose file: memory storage with `max_traces: 100000`.
+- `cmd/jaeger/internal/extension/jaegerquery/internal/apiv3/http_gateway.go`, `returnTraces`:
+  - an empty result is HTTP 404 with `"No traces found"`;
+  - otherwise the response is `{ "result": { "resourceSpans": [...] } }`, with every matching trace's resource spans combined into one list.
+
+Consequences: without `query.searchDepth`, a search silently returns at most 100 traces. A full result can't be told apart from a truncated one except by counting. Any single search returns at most 10,000 traces.
+
+**Capture** (decisions built on those facts):
+
+1. For each of `orders-api` and `worker`, cover `[captureFrom, captureTo]` with 10 s slices. Each slice sends `query.serviceName`, `query.startTimeMin`, `query.startTimeMax` and `query.searchDepth=1000`, all as RFC 3339.
+2. A 404 whose body says "No traces found" is an empty slice. Any other non-200 response fails the capture with the status and Jaeger's message.
+3. Spans are grouped by `traceId`. Each trace becomes one `TracesData` line, keeping each span's resource and scope. A trace found in several slices or for both services appears once.
+4. **Saturation:** a slice that returns exactly `searchDepth` distinct traces may be missing older traces, because the store keeps the most recently inserted matches. Such a slice is split in half and both halves are queried again, down to a 1 s minimum. A saturated 1 s slice counts in `saturatedSlices` and adds `slice_saturated`.
+5. **Cap:** at most 5,000 traces per service, as the design says. When the cap is reached, capture for that service stops and `service_cap` is added.
+6. Before writing, spans whose `url.path`, `http.target` or `http.route` falls under `/admin` are dropped, and a trace left with no spans is dropped. They are counted in `droppedAdminSpans`.
+
+`truncated` is true exactly when `truncationReasons` is not empty. _Expected volume:_ the `incident` profile is 10 rps for 150 s, about 1,500 API traces plus about 375 to 750 worker pass traces, so about 100 to 150 per 10 s slice. Neither saturation nor the cap should occur. The 10 s slice and the initial depth of 1,000 are decisions that bound each response's size; they are not measured, and M5c's live runs may tune them.
+
+**Contract impact:** the consumer learns from `capture.traces` whether the trace set is complete, and why not. Line order isn't meaningful.
+
+**Tests (B4),** against a stubbed `fetch` that implements the matching rules above:
+
+- slice boundaries and exact query parameters;
+- a 404 treated as empty, and a 400 surfaced;
+- a saturated slice split down to 1 s and then reported as `slice_saturated`;
+- the cap reported as `service_cap`;
+- deduplication across slices and services;
+- one trace per line, with resource and scope kept;
+- `/admin` spans dropped and counted.
+
+### `incident` load profile and the M4 test exception
+
+- **Decision:** add `INCIDENT` to the existing closed registry in `apps/loadgen/src/profiles.ts`:
+  - `name: 'incident'`, `ratePerSecond: 10`, `durationMs: 150_000`, `warmupMs: 0`;
+  - otherwise the steady profile's rules: mix, list, create and read settings.
+
+  Its golden hash is recorded in a new test only after its plan contents are checked, as M4 did for steady. The steady profile's golden hash must stay unchanged.
+
+- **Approved exception to "all M2 to M4 tests keep passing, unchanged":** `apps/loadgen/test/cli.test.ts:70` asserts `/--profile: unknown profile "burst"; available: steady/`. Registering a second profile changes the message to `available: incident, steady`, so the assertion becomes `/--profile: unknown profile "burst"; available: incident, steady/`. That is the only change to an existing test. M4's design allows it ("Profiles are a closed registry. M5 may add profiles, such as bursts, each with its own golden hash test"). The CLI's behavior for valid profiles doesn't change.
+- _Alternatives:_
+  - keep `INCIDENT` outside the registry, so no M4 test changes but `pnpm loadgen --profile incident --dry-run` can't show its hash;
+  - change the error message format, which is a larger M4 behavior change.
+- **Contract impact:** the manifest's `load.profile` is `"incident"`, and its `planHash` is reproducible from the profile and seed.
+- **Tests (B5):** the incident/42 golden hash; a different seed gives a different hash; the plan summary (1,500 entries, no warm-up, the mix shares); the steady/42 golden hash unchanged; the updated CLI assertion.
+
+### Unresolved
+
+- **Where `services[].version`, `services[].instanceId` and `infrastructure.images` come from.** The schema defines them, but how they are filled is M5c's orchestration: trace resource attributes, or Compose. Not evidenced yet.
+- **Whether a bundle is written when the symptom is not detected.** The schema allows `detection.detectedAt: null`. M5c decides, and the exit code is already defined as non-zero.
+- The `reqId` follow-up drop rests on Fastify's default request logging and its per-process counter. The log level for `/admin` routes makes it moot today.
+- The real trace volume per slice under the `incident` profile has not been measured. That needs a live run, in M5c.
 
 ## Incident CLI
 
