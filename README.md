@@ -17,7 +17,7 @@ It is the first of two repositories in an AI engineering portfolio. The second, 
 - **M3c, Metrics:** done. GitHub Actions is green for commit `8a0a941`, as confirmed by the repository owner. The live Compose checks for criteria 15 and 16 last ran before a final hardening pass, which changed only error reporting, a default constant and tests, and have not been rerun.
   - Request, connection-pool, order-status, worker-pass, payment and claim metrics reach Prometheus through the collector.
   - Labels come from closed sets. Order ids, SKUs, raw URLs and payment references are never labels.
-- **M4, Load generation:** implemented in commit `5f6f6eb`, and GitHub Actions is green for it, as confirmed by the repository owner. Acceptance criteria 1 to 10 and 12 pass. Criterion 11, the local performance check, has not been run. It needs the repository owner's explicit approval, because it creates about 923 real orders and consumes stock in the Compose database. M4 is not complete until it passes.
+- **M4, Load generation:** done. Implemented in commit `5f6f6eb`, and GitHub Actions is green for it, as confirmed by the repository owner. All 12 acceptance criteria pass. The local performance check, criterion 11, passed on its first run: 55.00 rps with a load-generator p95 of 8.2 ms and no failures. The full results are in [docs/roadmap.md](docs/roadmap.md).
   - `pnpm loadgen` runs seeded, deterministic traffic against the orders API. The same profile and seed always produce the same request plan and plan hash.
 - **M5 and later:** not started. Fault injection, incident bundles and the UI are still to come.
 
@@ -43,7 +43,6 @@ The lifecycle, processing protocol, and API contracts are specified in [docs/pro
 
 ## Planned
 
-- **M4:** a deterministic load generator. Implemented and green in GitHub Actions; it stays here until the local performance check, acceptance criterion 11, is run and passes.
 - **M5:** seeded fault scenarios that produce incident bundles with ground truth.
 - **M7:** a React UI, after the Engineering Operations AI UI. See [ADR 0004](docs/decisions/0004-frontend-sequencing.md).
 

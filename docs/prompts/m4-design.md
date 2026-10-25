@@ -1,6 +1,6 @@
 # M4 design: load generation
 
-Status: **approved.** Every design choice below has been resolved with the repository owner. **Implemented in commit `5f6f6eb`, and green in GitHub Actions, as confirmed by the repository owner. Acceptance criteria 1 to 10 and 12 pass. Criterion 11, the local performance check, has not been run. It needs the repository owner's explicit approval, because it creates about 923 real orders and consumes stock in the Compose database. M4 is not complete until it passes.** The determinism decision is recorded in ADR 0006.
+Status: **approved.** Every design choice below has been resolved with the repository owner. **Done: implemented in commit `5f6f6eb`, green in GitHub Actions as confirmed by the repository owner, and all 12 acceptance criteria pass. Criterion 11 passed on its first run: 55.00 rps with a load-generator p95 of 8.2 ms and a 0% failure rate. The results are recorded in `docs/roadmap.md`.** The determinism decision is recorded in ADR 0006.
 
 ## Scope
 

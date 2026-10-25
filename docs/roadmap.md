@@ -76,12 +76,19 @@ The design and the 17 acceptance criteria are in `docs/prompts/m3-design.md`. Ea
 - Telemetry failures, including a stopped collector, never change order outcomes or health.
 - M2 behavior, tests and shutdown contract stay intact. The telemetry flush at shutdown is best effort and capped at 300 ms.
 
-## M4: Load generation (implemented; GitHub Actions green for commit `5f6f6eb`, confirmed by the repository owner; criterion 11 pending)
+## M4: Load generation (done; GitHub Actions green for commit `5f6f6eb`, confirmed by the repository owner)
 
-The design and the 12 acceptance criteria are in `docs/prompts/m4-design.md`, with ADR 0006. Criteria 1 to 10 and 12 pass. Criterion 11, the local performance check, has not been run. It needs the repository owner's explicit approval, because it creates about 923 real orders and consumes stock in the Compose database. M4 is not complete until it passes.
+The design and the 12 acceptance criteria are in `docs/prompts/m4-design.md`, with ADR 0006. All 12 criteria pass.
 
 - `pnpm loadgen --profile steady --seed 42` produces the same request sequence on every run.
 - The steady profile sustains at least 50 requests per second locally with p95 latency under 200 ms and error rate under 1%.
+
+**Criterion 11, the local performance check,** ran once on 2026-10-25 (UTC), with the repository owner's approval, against the Compose stack after `docker compose up -d --build --wait`. `pnpm loadgen --profile steady --seed 42 --json` passed its preflight, ran, and exited 0. The `--json` flag changes only the report format, not the plan or the run.
+
+- **Load-generator measurements,** over the 60 s window: 3,300 entries offered, 3,300 sent and successful, and none failed, missed or skipped. Throughput 55.00 rps, p95 latency 8.2 ms, failure rate 0%. These are the measurements the thresholds apply to.
+- **Plan:** the plan hash matched the committed golden value.
+- **Post-run checks:** the database holds 923 orders with the run's idempotency prefix, every create in the plan, with no duplicate keys. The worker drained its backlog completely: no orders were left pending, processing or in `payment_unknown`.
+- **Prometheus, informational only:** the orders API's own server-side p95 over the run was about 6 ms. It is measured inside the API, not by the load generator, and is not used for the thresholds.
 
 ## M5: Fault scenarios and incident bundles
 
