@@ -2,9 +2,19 @@
 
 Each milestone is done only when every acceptance criterion passes on a clean clone.
 
-## Cross-repository sequencing
+## Project order
 
-Both portfolio repositories will have a React UI. The Engineering Operations AI UI is built first, once its backend and investigation workflow work. The Commerce Platform UI follows as M7. Until then this repository ships no frontend, and its API contracts follow the rules in the "Frontend readiness" section of `docs/architecture.md`. See ADR 0004.
+The portfolio is built in this order, agreed in principle by the repository owner on 2026-10-25. The ADR text and the milestone mapping below still await approval:
+
+1. **Commerce backend and infrastructure:** M0, M1 and M2.
+2. **Observability and incidents:** M3, M4 and M5.
+3. **Commerce Platform UI:** M7.
+4. **Engineering Operations AI backend:** a new, independent Git repository. It reads incident bundles through the contract in ADR 0007 and shares no code with this repository.
+5. **AI investigation UI:** in the Engineering Operations AI repository.
+
+M6, portfolio polish, keeps its place after M5; the agreed order does not place it. Until M7, this repository ships no frontend, and its API contracts follow the rules in the "Frontend readiness" section of `docs/architecture.md`.
+
+Proposed ADR 0008 records this order. Once accepted, it supersedes only the sequencing in ADR 0004, which built the Engineering Operations AI UI before the Commerce Platform UI. ADR 0004's API-first rules still apply.
 
 ## M0: Foundation (done)
 
@@ -108,7 +118,7 @@ The design and its acceptance criteria are in `docs/prompts/m5-design.md`, with 
 
 ## M7: Commerce UI
 
-Starts only after the Engineering Operations AI UI is functional.
+Starts after the observability and incidents phase, M3 to M5, is complete. See "Project order".
 
 - `apps/web` is a React app that runs locally through Docker Compose, with no cloud services.
 - Users can place an order, see order history, and watch an order's status change until it is `paid` or `failed`.

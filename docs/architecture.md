@@ -57,7 +57,7 @@ Status transitions, enforced in code and by a trigger: `pending -> processing`, 
 
 ## Frontend readiness
 
-A React UI is planned for M7, after the Engineering Operations AI UI exists. ADR 0004 records the decision. Until then, there is no frontend code, but the backend is built so a UI can be added without changing business logic.
+A React UI is planned for M7, after M5 and before the separate Engineering Operations AI repository is started. Proposed ADR 0008 records this order, and ADR 0004 the API-first rules below. Until then, there is no frontend code, but the backend is built so a UI can be added without changing business logic.
 
 - **Business rules stay in the backend.** Pricing, stock, and lifecycle rules live in the API and worker. The UI only displays state and submits requests.
 - **Contracts are presentation-neutral.** Responses are JSON with stable field names, ISO 8601 timestamps, and integer cents. Any text a user sees is chosen by the UI, not returned by the API.

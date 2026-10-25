@@ -45,7 +45,7 @@ The lifecycle, processing protocol, and API contracts are specified in [docs/pro
 ## Planned
 
 - **M5:** seeded fault scenarios that produce incident bundles with ground truth.
-- **M7:** a React UI, after the Engineering Operations AI UI. See [ADR 0004](docs/decisions/0004-frontend-sequencing.md).
+- **M7:** a React UI, planned after M5 and before the separate Engineering Operations AI repository is started, as proposed in [ADR 0008](docs/decisions/0008-project-order.md).
 
 ## Requirements
 
