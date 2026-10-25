@@ -1,6 +1,6 @@
 # M5c design: incident CLI and end-to-end runs
 
-Status: **Approved for implementation by the repository owner on 2026-10-25; implemented and committed, with the runtime isolation blockers resolved; its GitHub Actions result is not yet confirmed.** The deterministic behavior is implemented and covered by unit tests. Open items 1 to 3 (section 14) were verified with container-integration evidence and accepted by the owner on 2026-10-25, and are recorded as `true` in `RUNTIME_VERIFICATION` in `apps/incident/src/isolation.ts`. The stack now runs with `compose.faults.yaml`: the API, worker, Jaeger and Prometheus publish only on `127.0.0.1`, from an image that includes M5a, and the CLI's isolation checks pass against it. `pnpm incident capture-check` passed all 13 checks against the stack on 2026-10-25, without writing anything. Item 4 remains unverified, and no live run has been made; each live run still needs the owner's separate approval.
+Status: **Approved for implementation by the repository owner on 2026-10-25; implemented and committed, with the runtime isolation blockers resolved; CI confirmed by the repository owner on 2026-10-25.** The deterministic behavior is implemented and covered by unit tests. Open items 1 to 3 (section 14) were verified with container-integration evidence and accepted by the owner on 2026-10-25, and are recorded as `true` in `RUNTIME_VERIFICATION` in `apps/incident/src/isolation.ts`. The stack now runs with `compose.faults.yaml`: the API, worker, Jaeger and Prometheus publish only on `127.0.0.1`, from an image that includes M5a, and the CLI's isolation checks pass against it. `pnpm incident capture-check` passed all 13 checks against the stack on 2026-10-25, without writing anything. Item 4 remains unverified, and no live run has been made; each live run still needs the owner's separate approval.
 
 Every decision carries one label:
 
@@ -580,6 +580,8 @@ These codes belong to `capture-check` only. It fails closed: a safety-critical c
   - If the write fails, or the process ends first, as after a second signal, SIGKILL or a closed pipe, the report was **not emitted**. Nothing may assume it exists, or that its cleanup status was recorded.
   - Reading stdout, or redirecting it to a file, is the caller's job.
 
+**Measurements.** Before the warnings' end, the report prints `measurement:` lines: each capture source's duration, request attempts and budget; trace volume per service; and detection latency or "not detected". They are report-only evidence for open item 4.
+
 **The emitted report ends with four lines:**
 
 ```text
@@ -775,7 +777,7 @@ None of these changes the M5b contract or ADR 0007. Schema changes such as P3 op
 - **Item 1, verified.** Real `docker compose ps --format json` output is one JSON object per line, with `ID` (12-character short ID), `Service`, `Project`, `Image`, `State`, `Health` (empty when a service has no healthcheck) and `Publishers` (`URL` is the host IP). The parser reads it; truncated lines, missing fields, duplicate containers and foreign projects fail closed.
 - **Item 2, verified for configuration and at runtime.** `docker compose -f compose.yaml -f compose.faults.yaml config --format json` resolves one port each for `orders-api` and `worker`, with `host_ip: 127.0.0.1`; without `!override` the base ports are appended instead. After `up -d --no-deps --no-build --pull never --wait orders-api worker`, `docker compose ps`, `docker inspect` and the host's listening sockets show only `127.0.0.1:3000` and `127.0.0.1:3001`.
 - **Item 3, verified for the API premise only.** The `orders-api` container's hostname, its `ps` ID and the Prometheus `instance` label are the same short ID. Limitations accepted by the owner: this does not prove the CLI's HTTP traffic reaches that container (Docker Desktop forwards published ports through its own process); the worker's `instance` is `WORKER_ID` (`worker-1`), not its container ID; Jaeger is not tied to the project. Just after a recreation, Prometheus briefly shows the old and the new instance, so the check fails until the old series goes stale.
-- **Item 4, unverified.** It needs an authorized live run.
+- **Item 4, unverified.** It needs an authorized live run. The report now measures it: a `measurement:` line per capture source gives its duration on the monotonic clock, with retries and request attempts; one per service gives trace volume, saturated slices and truncation; one gives detection latency. The bundle schema is unchanged.
 
 **Blocking findings, resolved on 2026-10-25:**
 
@@ -787,3 +789,11 @@ Before Jaeger was recreated, its in-memory traces (4,177 for `orders-api`, 949 f
 After the recreation, Prometheus showed the old and the new `orders-api` instance, so the identity check failed, as designed, until the old series went stale; only then did all six isolation checks pass.
 
 **Remaining exposure, outside the isolation checks:** `otel-collector` (4318, 13133) and `postgres` (5432) keep the base file's all-interface bindings.
+
+**Live run log.**
+
+| Date       | Scenario, seed               | Exit        | Detection                   | Bundle                                                                  | Traces (orders-api, worker)                      | Capture                                  | C3a                                                                                             | C3b                                                                | C5                                                                                                       |
+| ---------- | ---------------------------- | ----------- | --------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| 2026-10-25 | `bad-deploy-order-reads`, 42 | 0 (success) | 15,007 ms after the trigger | `incidents/bad-deploy-order-reads-42-20261025T173140Z`, valid, complete | 1,500 and 406; 0 saturated slices, no truncation | traces 340 ms (34 requests), logs 222 ms | PASS: the symptom series, with no samples before the trigger, meets its condition 10 s after it | PASS: no scenario name, `/admin` or "fault" in the telemetry files | PASS: no active scenario, lock released, apps healthy, worker in-flight 0, API pool 0 used and 0 pending |
+
+The run was made by the repository owner from a working tree with uncommitted changes (`producer.dirty: true`). It created 406 orders, every create in the plan, and used 1,097 units of stock.

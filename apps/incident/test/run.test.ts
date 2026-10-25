@@ -419,6 +419,60 @@ describe('a successful run', () => {
   });
 });
 
+describe('measurements for open item 4 (report only)', () => {
+  it('reports each capture source duration, trace volume and detection latency', async () => {
+    const delayed =
+      <T>(ms: number, value: () => Promise<T>) =>
+      () =>
+        new Promise<T>((resolve, reject) => {
+          h.time.timers.setTimeout(() => {
+            value().then(resolve, reject);
+          }, ms);
+        });
+    const base = harness();
+    const defaults = base.deps.captures;
+    if (!defaults) throw new Error('captures missing');
+    const h = harness({
+      captures: {
+        metrics: delayed(1_234, () => defaults.metrics({} as never)),
+        traces: delayed(5_678, () => defaults.traces({} as never)),
+        logs: delayed(90, () => defaults.logs({} as never)),
+      },
+    });
+    const report = await h.run();
+    expect(report.outcome).toBe('success');
+    expect(report.measurements).toEqual([
+      'capture-metrics completed in 1234 ms (budget 40000 ms, 0 request attempts)',
+      'capture-traces completed in 5678 ms (budget 50000 ms, 0 request attempts)',
+      'trace volume orders-api: 1 traces, 0 saturated slices, truncation none',
+      'trace volume worker: 0 traces, 0 saturated slices, truncation none',
+      'capture-logs completed in 90 ms (budget 30000 ms)',
+      'detection latency 1 ms after the trigger (deadline 120000 ms)',
+    ]);
+    expect(formatReport(report)).toMatch(/measurement: capture-traces completed in 5678 ms/);
+  });
+
+  it('keeps the measurements of completed sources when a later source fails', async () => {
+    const h = harness({
+      captures: { traces: () => Promise.reject(new CategorizedError('timeout', 'deadline')) },
+    });
+    const report = await h.run();
+    expect(report.outcome).toBe('evidence_failure');
+    expect(report.measurements).toEqual([
+      'capture-metrics completed in 0 ms (budget 40000 ms, 0 request attempts)',
+      'capture-traces failed in 0 ms (budget 50000 ms, 0 request attempts)',
+    ]);
+  });
+
+  it('reports a symptom that was not detected', async () => {
+    const h = harness({
+      poll: () => ({ status: 200, body: { status: 'success', data: { result: [] } } }),
+    });
+    const report = await h.run();
+    expect(report.measurements.at(-1)).toBe('detection: not detected by T+150 s');
+  });
+});
+
 describe('detection outcomes', () => {
   const empty = (): Reply => ({ status: 200, body: { status: 'success', data: { result: [] } } });
 

@@ -182,6 +182,12 @@ export interface IncidentReport {
     | { state: 'none'; reason: string };
   cleanup: { state: CleanupState; steps: { step: 'stop' | 'load' | 'lock'; result: string }[] };
   warnings: string[];
+  /**
+   * Measurements for the open runtime item 4 (docs/prompts/m5c-design.md, section 14): each
+   * capture source's duration on the monotonic clock, retries included, trace volume per service,
+   * and detection latency. Report only; the bundle schema is unchanged.
+   */
+  measurements: string[];
   redactions: number;
 }
 
@@ -227,6 +233,7 @@ interface Ctx {
 
 export async function runIncident(config: RunConfig, deps: RunDeps): Promise<IncidentReport> {
   const warnings: string[] = [];
+  const measurements: string[] = [];
   const evidenceFs = deps.evidenceFs ?? NODE_EVIDENCE_FS;
   const lockFs = deps.lockFs ?? NODE_LOCK_FS;
   const simple = (command: string, args: readonly string[]) => {
@@ -259,6 +266,7 @@ export async function runIncident(config: RunConfig, deps: RunDeps): Promise<Inc
     evidence: { state: 'none', reason: 'the run stopped before the load started' },
     cleanup: notNeeded,
     warnings,
+    measurements,
     redactions: 0,
   });
 
@@ -321,7 +329,7 @@ export async function runIncident(config: RunConfig, deps: RunDeps): Promise<Inc
     monotonic: deps.monotonic,
   });
 
-  let result: Omit<IncidentReport, 'cleanup' | 'warnings'>;
+  let result: Omit<IncidentReport, 'cleanup' | 'warnings' | 'measurements'>;
   try {
     result = await work(config, deps, {
       ctx,
@@ -330,6 +338,7 @@ export async function runIncident(config: RunConfig, deps: RunDeps): Promise<Inc
       globalDeadline,
       containers,
       warnings,
+      measurements,
       evidenceFs,
     });
     // A signal during the uninterruptible write and validation: the bundle's state stays truthful.
@@ -390,7 +399,7 @@ export async function runIncident(config: RunConfig, deps: RunDeps): Promise<Inc
 
   deps.onCleanupStart?.();
   const cleanup = await runCleanup(ctx, control, deps, lockFs);
-  return { ...result, cleanup, warnings };
+  return { ...result, cleanup, warnings, measurements };
 }
 
 interface WorkEnv {
@@ -400,6 +409,7 @@ interface WorkEnv {
   globalDeadline: number;
   containers: ComposeContainer[];
   warnings: string[];
+  measurements: string[];
   evidenceFs: EvidenceFs;
 }
 
@@ -407,7 +417,7 @@ async function work(
   config: RunConfig,
   deps: RunDeps,
   env: WorkEnv,
-): Promise<Omit<IncidentReport, 'cleanup' | 'warnings'>> {
+): Promise<Omit<IncidentReport, 'cleanup' | 'warnings' | 'measurements'>> {
   const { ctx, control, workSignal } = env;
   const { timers, monotonic } = deps;
   const guard = <T>(p: Promise<T>) => raceSignals(p, [workSignal]);
@@ -751,8 +761,12 @@ async function work(
       interrupt: deps.interrupt,
       attemptTimeoutMs: budget.attemptMs,
     });
+    const started = monotonic.now();
+    let outcome = 'failed';
     try {
-      return await guard(fn(b.fetch));
+      const value = await guard(fn(b.fetch));
+      outcome = 'completed';
+      return value;
     } catch (err) {
       if (isAborted(workSignal)) throw err;
       const category = classify(err, b.state);
@@ -760,6 +774,9 @@ async function work(
       return await evidenceFailure(stage, category, message(err));
     } finally {
       b.dispose();
+      env.measurements.push(
+        `${stage} ${outcome} in ${String(Math.round(monotonic.now() - started))} ms (budget ${String(budget.budgetMs)} ms, ${String(b.state.attempts)} request attempts)`,
+      );
     }
   };
   done.metrics = await runSource('capture-metrics', LIMITS.metrics, (fetch) =>
@@ -768,7 +785,13 @@ async function work(
   done.traces = await runSource('capture-traces', LIMITS.traces, (fetch) =>
     captures.traces({ ...window, baseUrl: config.jaegerUrl, fetch, services: SERVICES }),
   );
+  for (const s of done.traces.summary.services) {
+    env.measurements.push(
+      `trace volume ${s.name}: ${String(s.traces)} traces, ${String(s.saturatedSlices)} saturated slices, truncation ${s.truncationReasons.length > 0 ? s.truncationReasons.join(', ') : 'none'}`,
+    );
+  }
   const logsStart = monotonic.now();
+  let logsOutcome = 'failed';
   try {
     done.logs = await guard(
       captures.logs({
@@ -786,11 +809,16 @@ async function work(
         }),
       }),
     );
+    logsOutcome = 'completed';
   } catch (err) {
     if (isAborted(workSignal)) throw err;
     const category = err instanceof CategorizedError ? err.category : 'command';
     if (category === 'deadline' || category === 'interrupted') throw err;
     await evidenceFailure('capture-logs', category, message(err));
+  } finally {
+    env.measurements.push(
+      `capture-logs ${logsOutcome} in ${String(Math.round(monotonic.now() - logsStart))} ms (budget ${String(LIMITS.logs.budgetMs)} ms)`,
+    );
   }
   if (!done.logs) throw orchestration('capture', 'log capture returned nothing');
 
@@ -805,6 +833,11 @@ async function work(
   } catch (err) {
     return await evidenceFailure('redact', 'validation', message(err));
   }
+  env.measurements.push(
+    detected
+      ? `detection latency ${String(detected.getTime() - triggerStartedAt.getTime())} ms after the trigger (deadline ${String(groundTruth.primarySymptom.deadlineSeconds * 1000)} ms)`
+      : `detection: not detected by T+${String(LIMITS.pollEndMs / 1000)} s`,
+  );
   const meta = serviceMetadata(SERVICES, traces, metrics);
   env.warnings.push(...meta.warnings);
   const truncated = done.traces.summary.services.filter((s) => s.truncated);
@@ -1027,6 +1060,7 @@ export function exitCodeFor(
 export function formatReport(report: IncidentReport): string {
   const lines: string[] = [];
   for (const w of report.warnings) lines.push(`warning: ${w}`);
+  for (const m of report.measurements) lines.push(`measurement: ${m}`);
   if (report.redactions > 0) lines.push(`redactions: ${String(report.redactions)}`);
   if (report.detail) lines.push(`detail: ${report.detail}`);
   const outcome =

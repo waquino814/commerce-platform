@@ -300,6 +300,7 @@ describe('run, report emission and signals (section 9)', () => {
     evidence: { state: 'none' as const, reason: 'x' },
     cleanup: { state: 'succeeded' as const, steps: [] },
     warnings: [],
+    measurements: [],
     redactions: 0,
   };
 
