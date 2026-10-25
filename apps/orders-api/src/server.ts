@@ -1,4 +1,5 @@
 import type { Pool } from '@commerce/db';
+import { ORDER_READ_ERROR_MESSAGE, type ScenarioControl } from '@commerce/faults';
 import {
   createApiMetrics,
   isProbePath,
@@ -6,8 +7,9 @@ import {
   type ApiMetrics,
 } from '@commerce/telemetry';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import { registerAdminRoutes } from './admin.js';
 import { registerErrorHandler } from './errors.js';
-import { registerHealthRoutes } from './health.js';
+import { probeLogLevel, registerHealthRoutes } from './health.js';
 import { registerCommerceRoutes } from './routes.js';
 
 export interface ServerDeps {
@@ -15,6 +17,8 @@ export interface ServerDeps {
   logger: FastifyBaseLogger;
   /** M3c request metrics. Defaults to the global meter, a no-op when telemetry is off. */
   metrics?: ApiMetrics;
+  /** M5 fault injection. Absent when `FAULTS_ENABLED` is not `true`: no hook and no route. */
+  faults?: { control: ScenarioControl; orderReadFault: { shouldFail(): boolean } };
 }
 
 /** Builds the orders API without starting it, so tests can use `inject`. */
@@ -40,8 +44,28 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     }
     done();
   });
+  // M5 `bad-deploy-order-reads`: only registered when faults are enabled, and a no-op unless that
+  // scenario is active. The thrown error takes the API's normal error path to a 500.
+  const orderReadFault = deps.faults?.orderReadFault;
+  if (orderReadFault) {
+    app.addHook('preHandler', (request, _reply, done) => {
+      if (
+        request.method === 'GET' &&
+        request.routeOptions.url === '/orders/:id' &&
+        orderReadFault.shouldFail()
+      ) {
+        done(new TypeError(ORDER_READ_ERROR_MESSAGE));
+        return;
+      }
+      done();
+    });
+  }
   registerErrorHandler(app);
   registerHealthRoutes(app, { pool: deps.pool });
+  registerAdminRoutes(app, {
+    control: deps.faults?.control ?? null,
+    logLevel: probeLogLevel(app.log.level),
+  });
   registerCommerceRoutes(app, { pool: deps.pool });
   return app;
 }

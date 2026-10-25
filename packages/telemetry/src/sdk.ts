@@ -3,7 +3,10 @@ import { setGlobalErrorHandler } from '@opentelemetry/core';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-proto';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
-import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
+import {
+  HttpInstrumentation,
+  type HttpInstrumentationConfig,
+} from '@opentelemetry/instrumentation-http';
 import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
@@ -27,6 +30,15 @@ import { isProbePath } from './http.js';
 import { NOOP_METER_PROVIDER } from './metrics.js';
 
 export const BATCH_MAX_QUEUE_SIZE = 2048;
+
+/**
+ * HTTP tracing settings. Incoming health probes and scenario control requests are never traced,
+ * and from M5 neither are outgoing requests to scenario control paths.
+ */
+export const HTTP_INSTRUMENTATION_CONFIG: HttpInstrumentationConfig = {
+  ignoreIncomingRequestHook: (request) => isProbePath(request.url),
+  ignoreOutgoingRequestHook: (request) => isProbePath(request.path ?? undefined),
+};
 
 export interface StartTelemetryOptions {
   config: TelemetryConfig;
@@ -134,9 +146,7 @@ export function startTelemetry(options: StartTelemetryOptions): TelemetryHandle 
     // The instrumentations keep their traces but record no metrics; only the catalog does.
     meterProvider: NOOP_METER_PROVIDER,
     instrumentations: [
-      new HttpInstrumentation({
-        ignoreIncomingRequestHook: (request) => isProbePath(request.url),
-      }),
+      new HttpInstrumentation(HTTP_INSTRUMENTATION_CONFIG),
       new PgInstrumentation({ requireParentSpan: true, enhancedDatabaseReporting: false }),
     ],
   });

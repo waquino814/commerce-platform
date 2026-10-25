@@ -1,0 +1,268 @@
+{
+  "$id": "https://commerce-platform.local/schemas/incident-bundle/v1/ground-truth.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": {},
+  "properties": {
+    "affectedComponents": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9-]*$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "dataEffects": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "description": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "expectedRemediation": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "faultParameters": {
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ]
+      },
+      "propertyNames": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "primarySymptom": {
+      "additionalProperties": {},
+      "properties": {
+        "comparison": {
+          "enum": [
+            "gt",
+            "gte",
+            "lt",
+            "lte"
+          ],
+          "type": "string"
+        },
+        "deadlineSeconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        },
+        "description": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "evaluation": {
+          "enum": [
+            "increase",
+            "max_over_time"
+          ],
+          "type": "string"
+        },
+        "matchers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "metric": {
+          "pattern": "^[a-zA-Z_:][a-zA-Z0-9_:]*$",
+          "type": "string"
+        },
+        "signal": {
+          "const": "metric",
+          "type": "string"
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "windowSeconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "signal",
+        "metric",
+        "matchers",
+        "evaluation",
+        "windowSeconds",
+        "comparison",
+        "threshold",
+        "deadlineSeconds",
+        "description"
+      ],
+      "type": "object"
+    },
+    "rootCause": {
+      "additionalProperties": {},
+      "properties": {
+        "component": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
+        "summary": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "scenario": {
+      "additionalProperties": {},
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "type": "string"
+        },
+        "seed": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "version": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "seed"
+      ],
+      "type": "object"
+    },
+    "schemaVersion": {
+      "pattern": "^1\\.\\d+\\.\\d+$",
+      "type": "string"
+    },
+    "secondarySymptoms": {
+      "items": {
+        "additionalProperties": {},
+        "properties": {
+          "comparison": {
+            "enum": [
+              "gt",
+              "gte",
+              "lt",
+              "lte"
+            ],
+            "type": "string"
+          },
+          "deadlineSeconds": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "description": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "evaluation": {
+            "enum": [
+              "increase",
+              "max_over_time"
+            ],
+            "type": "string"
+          },
+          "matchers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "metric": {
+            "pattern": "^[a-zA-Z_:][a-zA-Z0-9_:]*$",
+            "type": "string"
+          },
+          "signal": {
+            "const": "metric",
+            "type": "string"
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "windowSeconds": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "signal",
+          "metric",
+          "matchers",
+          "evaluation",
+          "windowSeconds",
+          "comparison",
+          "threshold",
+          "deadlineSeconds",
+          "description"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "timeline": {
+      "additionalProperties": {},
+      "properties": {
+        "durationMs": {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer"
+        },
+        "triggerOffsetMs": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "triggerOffsetMs",
+        "durationMs"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "scenario",
+    "description",
+    "rootCause",
+    "affectedComponents",
+    "faultParameters",
+    "timeline",
+    "primarySymptom",
+    "secondarySymptoms",
+    "dataEffects",
+    "expectedRemediation"
+  ],
+  "title": "Incident bundle ground-truth (schema 1.0.0)",
+  "type": "object"
+}

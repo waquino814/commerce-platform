@@ -1,0 +1,62 @@
+{
+  "affectedComponents": [
+    "worker"
+  ],
+  "dataEffects": [
+    "Every order containing the poison SKU, placed by the incident tool or by background traffic, hangs one worker slot per claim while the fault is active.",
+    "After the claim timeout, a hung order is recovered and claimed again, hanging another slot; with the default five slots the worker can stall completely.",
+    "Once the fault stops, hung passes end with an error, and each affected order stays processing until its claim expires, then processes normally."
+  ],
+  "description": "Orders containing one product make every processing pass hang. Each claim of such an order holds a worker slot until its claim expires and the order is claimed again, so the worker can stall.",
+  "expectedRemediation": [
+    "Identify the order or product that makes processing hang, and stop it from being processed.",
+    "Fix the processing path, then let the affected orders be recovered."
+  ],
+  "faultParameters": {
+    "poisonSku": "SKU-00587"
+  },
+  "primarySymptom": {
+    "comparison": "gt",
+    "deadlineSeconds": 120,
+    "description": "Expired claims are recovered and returned to pending.",
+    "evaluation": "increase",
+    "matchers": {
+      "job": "worker",
+      "order_status": "pending"
+    },
+    "metric": "commerce_claims_recovered_total",
+    "signal": "metric",
+    "threshold": 0,
+    "windowSeconds": 60
+  },
+  "rootCause": {
+    "component": "worker",
+    "summary": "Processing hangs for any order containing the poison SKU."
+  },
+  "scenario": {
+    "name": "poison-order",
+    "seed": 42,
+    "version": 1
+  },
+  "schemaVersion": "1.0.0",
+  "secondarySymptoms": [
+    {
+      "comparison": "gt",
+      "deadlineSeconds": 180,
+      "description": "Hung passes end with an error once released.",
+      "evaluation": "increase",
+      "matchers": {
+        "job": "worker",
+        "order_pass_outcome": "error"
+      },
+      "metric": "commerce_worker_passes_total",
+      "signal": "metric",
+      "threshold": 0,
+      "windowSeconds": 60
+    }
+  ],
+  "timeline": {
+    "durationMs": 90000,
+    "triggerOffsetMs": 30000
+  }
+}

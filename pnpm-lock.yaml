@@ -215,6 +215,9 @@ importers:
       '@commerce/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@commerce/faults':
+        specifier: workspace:*
+        version: link:../../packages/faults
       '@commerce/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
@@ -240,6 +243,9 @@ importers:
       '@commerce/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@commerce/faults':
+        specifier: workspace:*
+        version: link:../../packages/faults
       '@commerce/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
@@ -268,6 +274,24 @@ importers:
       pg:
         specifier: 8.23.1
         version: 8.23.1
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+
+  packages/faults:
+    dependencies:
+      '@commerce/db':
+        specifier: workspace:*
+        version: link:../db
+      '@commerce/incident-bundle':
+        specifier: workspace:*
+        version: link:../incident-bundle
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+
+  packages/incident-bundle:
+    dependencies:
       zod:
         specifier: 4.6.7
         version: 4.6.7

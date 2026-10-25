@@ -1,4 +1,5 @@
 import { ConfigError, createPool } from '@commerce/db';
+import { DISABLED_FAULTS } from '@commerce/faults';
 import {
   completeShutdown,
   getActiveTelemetry,
@@ -7,12 +8,16 @@ import {
 } from '@commerce/telemetry';
 import { pino } from 'pino';
 import { loadConfig } from './config.js';
+import { createApiFaults } from './faults.js';
+import { loadFaultsConfig } from './faults-config.js';
 import { buildServer } from './server.js';
+import { createApiCleanup } from './shutdown.js';
 
 const SHUTDOWN_DEADLINE_MS = 8000;
 
 async function main(): Promise<void> {
   const config = loadConfig(process.env);
+  const faultsConfig = loadFaultsConfig(process.env);
   const logger = pino({
     level: config.logLevel,
     base: { service: 'orders-api' },
@@ -23,7 +28,11 @@ async function main(): Promise<void> {
   });
   // M3c: connection metrics for the API's only pool. A no-op when telemetry is off.
   observePools([{ name: 'orders-api', pool }]);
-  const app = buildServer({ pool, logger });
+  // M5: fault injection exists only with FAULTS_ENABLED=true, and never starts a scenario itself.
+  const faults = faultsConfig.enabled
+    ? createApiFaults({ pool, workerAdminUrl: faultsConfig.workerAdminUrl })
+    : null;
+  const app = buildServer({ pool, logger, ...(faults ? { faults } : {}) });
 
   let shuttingDown = false;
   const shutdown = (signal: NodeJS.Signals): void => {
@@ -37,11 +46,12 @@ async function main(): Promise<void> {
     }, SHUTDOWN_DEADLINE_MS).unref();
     void completeShutdown({
       exitCode: 0,
-      cleanup: async () => {
-        await app.close();
-        await pool.end();
-        logger.info('shutdown complete');
-      },
+      cleanup: createApiCleanup({
+        faults: faults?.controller ?? DISABLED_FAULTS,
+        app,
+        pool,
+        logger,
+      }),
       telemetry: getActiveTelemetry(),
       deadlineAt,
       exit: (code) => process.exit(code),

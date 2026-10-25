@@ -1,0 +1,66 @@
+{
+  "affectedComponents": [
+    "payment-provider",
+    "worker"
+  ],
+  "dataEffects": [
+    "Each unanswered charge holds a worker slot until the payment timeout.",
+    "Affected orders retry; once the charge budget is spent, they reconcile, and with no recorded charge they are voided and fail, releasing their stock.",
+    "Orders whose retried charge is answered are paid normally."
+  ],
+  "description": "The payment provider stops answering a share of charge requests, so the worker times out, retries with backoff, and finally reconciles the affected orders.",
+  "expectedRemediation": [
+    "Restore the payment provider.",
+    "Confirm charge calls succeed and payment latency returns to normal."
+  ],
+  "faultParameters": {
+    "hangPercent": 60,
+    "operation": "charge"
+  },
+  "primarySymptom": {
+    "comparison": "gt",
+    "deadlineSeconds": 120,
+    "description": "Charge calls to the payment provider fail with an unknown outcome.",
+    "evaluation": "increase",
+    "matchers": {
+      "job": "worker",
+      "payment_operation": "charge",
+      "payment_result": "error"
+    },
+    "metric": "commerce_payment_calls_total",
+    "signal": "metric",
+    "threshold": 0,
+    "windowSeconds": 60
+  },
+  "rootCause": {
+    "component": "payment-provider",
+    "summary": "The payment provider leaves a share of charge requests unanswered until the client times out."
+  },
+  "scenario": {
+    "name": "payment-timeouts",
+    "seed": 42,
+    "version": 1
+  },
+  "schemaVersion": "1.0.0",
+  "secondarySymptoms": [
+    {
+      "comparison": "gt",
+      "deadlineSeconds": 120,
+      "description": "Charge passes schedule retries.",
+      "evaluation": "increase",
+      "matchers": {
+        "job": "worker",
+        "order_pass_outcome": "retry_scheduled",
+        "order_pass_type": "charge"
+      },
+      "metric": "commerce_worker_passes_total",
+      "signal": "metric",
+      "threshold": 0,
+      "windowSeconds": 60
+    }
+  ],
+  "timeline": {
+    "durationMs": 90000,
+    "triggerOffsetMs": 30000
+  }
+}

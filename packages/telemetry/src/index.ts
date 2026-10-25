@@ -10,7 +10,7 @@ export {
   type RateLimitedDiagLogger,
 } from './diag.js';
 export { traceLogMixin } from './log-mixin.js';
-export { isProbePath, nameServerSpan, PROBE_PATHS } from './http.js';
+export { ADMIN_PATH_PREFIX, isProbePath, nameServerSpan, PROBE_PATHS } from './http.js';
 export { flushWithinBudget, FLUSH_CAP_MS, type FlushResult } from './flush.js';
 export {
   DISABLED_TELEMETRY,

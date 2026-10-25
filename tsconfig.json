@@ -8,6 +8,12 @@
       "path": "packages/telemetry"
     },
     {
+      "path": "packages/incident-bundle"
+    },
+    {
+      "path": "packages/faults"
+    },
+    {
       "path": "apps/orders-api"
     },
     {

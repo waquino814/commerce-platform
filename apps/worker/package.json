@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@commerce/db": "workspace:*",
+    "@commerce/faults": "workspace:*",
     "@commerce/telemetry": "workspace:*",
     "fastify": "5.12.7",
     "pino": "10.4.0",

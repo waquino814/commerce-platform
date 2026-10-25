@@ -13,6 +13,9 @@
     },
     {
       "path": "../../packages/telemetry"
+    },
+    {
+      "path": "../../packages/faults"
     }
   ]
 }

@@ -1,0 +1,48 @@
+{
+  "affectedComponents": [
+    "orders-api"
+  ],
+  "dataEffects": [
+    "No order, payment or stock data changes. Only order reads fail."
+  ],
+  "description": "A release behind a configuration flag breaks the order read endpoint: a share of GET /orders/:id requests throw an unexpected error and return 500.",
+  "expectedRemediation": [
+    "Turn the configuration flag off, or roll back the release.",
+    "Confirm GET /orders/:id returns 200 again."
+  ],
+  "faultParameters": {
+    "errorMessage": "Cannot read properties of undefined (reading 'lines')",
+    "failurePercent": 40,
+    "route": "GET /orders/:id"
+  },
+  "primarySymptom": {
+    "comparison": "gt",
+    "deadlineSeconds": 120,
+    "description": "GET /orders/:id returns HTTP 500.",
+    "evaluation": "increase",
+    "matchers": {
+      "http_response_status_code": "500",
+      "http_route": "/orders/:id",
+      "job": "orders-api"
+    },
+    "metric": "http_server_request_duration_seconds_count",
+    "signal": "metric",
+    "threshold": 0,
+    "windowSeconds": 60
+  },
+  "rootCause": {
+    "component": "orders-api",
+    "summary": "A faulty code path enabled by a configuration flag throws a TypeError while building the order view."
+  },
+  "scenario": {
+    "name": "bad-deploy-order-reads",
+    "seed": 42,
+    "version": 1
+  },
+  "schemaVersion": "1.0.0",
+  "secondarySymptoms": [],
+  "timeline": {
+    "durationMs": 90000,
+    "triggerOffsetMs": 30000
+  }
+}

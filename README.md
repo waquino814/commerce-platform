@@ -19,7 +19,8 @@ It is the first of two repositories in an AI engineering portfolio. The second, 
   - Labels come from closed sets. Order ids, SKUs, raw URLs and payment references are never labels.
 - **M4, Load generation:** done. Implemented in commit `5f6f6eb`, and GitHub Actions is green for it, as confirmed by the repository owner. All 12 acceptance criteria pass. The local performance check, criterion 11, passed on its first run: 55.00 rps with a load-generator p95 of 8.2 ms and no failures. The full results are in [docs/roadmap.md](docs/roadmap.md).
   - `pnpm loadgen` runs seeded, deterministic traffic against the orders API. The same profile and seed always produce the same request plan and plan hash.
-- **M5 and later:** not started. Fault injection, incident bundles and the UI are still to come.
+- **M5, Fault scenarios and incident bundles:** M5a implemented and verified locally, awaiting review, commit and CI; M5b and M5c proposed, not approved. See [docs/prompts/m5-design.md](docs/prompts/m5-design.md).
+- **M6 and later:** not started. Portfolio polish and the UI are still to come.
 
 See [docs/roadmap.md](docs/roadmap.md) for milestone boundaries and acceptance criteria.
 

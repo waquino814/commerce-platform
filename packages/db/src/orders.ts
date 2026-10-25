@@ -695,3 +695,19 @@ export async function countOrdersByStatus(db: Queryable): Promise<Record<OrderSt
   for (const row of result.rows) counts[row.status] = Number(row.count);
   return counts;
 }
+
+/**
+ * The SKUs in an order, sorted. Read-only; used by the M5 poison-order fault, only while that
+ * scenario is active.
+ */
+export async function listOrderSkus(db: Queryable, orderId: string): Promise<string[]> {
+  const result = await db.query<{ sku: string }>(
+    `SELECT p.sku
+       FROM order_items oi
+       JOIN products p ON p.id = oi.product_id
+      WHERE oi.order_id = $1
+      ORDER BY p.sku`,
+    [orderId],
+  );
+  return result.rows.map((r) => r.sku);
+}

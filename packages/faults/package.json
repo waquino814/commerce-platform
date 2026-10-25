@@ -1,0 +1,21 @@
+{
+  "name": "@commerce/faults",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@commerce/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@commerce/db": "workspace:*",
+    "@commerce/incident-bundle": "workspace:*",
+    "zod": "4.6.7"
+  }
+}

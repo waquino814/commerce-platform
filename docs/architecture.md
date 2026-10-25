@@ -23,12 +23,12 @@ Pure order and pricing rules start inside the app that uses them. They move to a
 
 ## Runtime topology
 
-Compose services: `postgres`, one-shot `migrate` and `seed` services, `orders-api` on port 3000, and `worker` with health on port 3001. The apps start after the seed completes. Compose health checks call `/readyz`, so "healthy" means the service can reach Postgres. An init script in `infra/postgres/init` creates the `commerce_test` database used by integration tests. M3 adds `otel-collector`, `jaeger` for traces, and `prometheus` for metrics. Logs stay JSON on stdout, with `trace_id` and `span_id` from M3. Exporting logs through the collector, and writing telemetry files, arrive with incident bundles in M5.
+Compose services: `postgres`, one-shot `migrate` and `seed` services, `orders-api` on port 3000, and `worker` with health on port 3001. The apps start after the seed completes. Compose health checks call `/readyz`, so "healthy" means the service can reach Postgres. An init script in `infra/postgres/init` creates the `commerce_test` database used by integration tests. M3 adds `otel-collector`, `jaeger` for traces, and `prometheus` for metrics. Logs stay JSON on stdout, with `trace_id` and `span_id` from M3. In the proposed M5 design, logs are not exported through the collector: the incident CLI writes bundle telemetry files from Jaeger, Prometheus and container logs. See `docs/prompts/m5-design.md`.
 
 ```
 loadgen -> orders-api -> postgres <- worker
                  \           |         /
-                  ---> otel-collector ---> jaeger, prometheus   (M3+; log export and files in M5)
+                  ---> otel-collector ---> jaeger, prometheus   (M3+; read by the M5 incident CLI, proposed)
 ```
 
 ## Order processing
@@ -64,7 +64,7 @@ A React UI is planned for M7, after the Engineering Operations AI UI exists. ADR
 - **Errors are machine-readable.** Every error has the shape `{ error, message, details? }`, with a stable `error` code the UI can map to its own text.
 - **Status is readable without guessing.** Order responses include the status, failure reason, and attempt count, so the UI can show progress by polling `GET /orders/:id`.
 - **Lists are paginated with cursors,** so order history and catalog views scale.
-- **Demo scenarios use the same API as everything else.** The M5 scenario control endpoints will list, start, and report on scenarios, and stay disabled unless `FAULTS_ENABLED=true`.
+- **Demo scenarios use the same API as everything else.** The M5 scenario control endpoints list, start, stop, and report on scenarios, and exist only when `FAULTS_ENABLED=true`.
 - **No UI concerns leak into the backend yet.** CORS, sessions, and static file serving are decided in M7.
 
 ## Fault scenarios
@@ -79,7 +79,7 @@ A scenario has a name, a seed, a start trigger, a duration, and a ground-truth d
 - Payment provider lookup outage, parking orders in `payment_unknown` with stock held.
 - Bad deploy simulated by a config flag that raises error rates on one endpoint.
 
-Faults are enabled by environment variables, or by an admin endpoint that exists only when `FAULTS_ENABLED=true`.
+From M5a, `FAULTS_ENABLED=true` only makes the scenario control endpoints exist. A scenario starts only through those endpoints, never through an environment variable, and expires on its own.
 
 ## Incident bundle contract
 

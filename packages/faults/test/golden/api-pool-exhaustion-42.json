@@ -1,0 +1,65 @@
+{
+  "affectedComponents": [
+    "orders-api",
+    "orders-api-pool"
+  ],
+  "dataEffects": [
+    "Order creation and reads fail with 500 while the pool is exhausted; no order is created for a failed request.",
+    "The orders API readiness check fails during the fault."
+  ],
+  "description": "A connection leak in the orders API holds every connection of its database pool, so requests that need the database wait for the connect timeout and fail.",
+  "expectedRemediation": [
+    "Release the leaked connections, or restart the orders API.",
+    "Find and fix the code path that does not release its connection."
+  ],
+  "faultParameters": {
+    "heldConnections": 10,
+    "pool": "orders-api"
+  },
+  "primarySymptom": {
+    "comparison": "gt",
+    "deadlineSeconds": 120,
+    "description": "POST /orders returns HTTP 500 after waiting for a database connection.",
+    "evaluation": "increase",
+    "matchers": {
+      "http_request_method": "POST",
+      "http_response_status_code": "500",
+      "http_route": "/orders",
+      "job": "orders-api"
+    },
+    "metric": "http_server_request_duration_seconds_count",
+    "signal": "metric",
+    "threshold": 0,
+    "windowSeconds": 60
+  },
+  "rootCause": {
+    "component": "orders-api-pool",
+    "summary": "Leaked database connections exhaust the orders API connection pool."
+  },
+  "scenario": {
+    "name": "api-pool-exhaustion",
+    "seed": 42,
+    "version": 1
+  },
+  "schemaVersion": "1.0.0",
+  "secondarySymptoms": [
+    {
+      "comparison": "gt",
+      "deadlineSeconds": 120,
+      "description": "Requests queue for a connection from the orders API pool.",
+      "evaluation": "max_over_time",
+      "matchers": {
+        "db_client_connection_pool_name": "orders-api",
+        "job": "orders-api"
+      },
+      "metric": "db_client_connection_pending_requests",
+      "signal": "metric",
+      "threshold": 0,
+      "windowSeconds": 60
+    }
+  ],
+  "timeline": {
+    "durationMs": 90000,
+    "triggerOffsetMs": 30000
+  }
+}

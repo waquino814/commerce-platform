@@ -1,8 +1,10 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { claimDueOrders, ConfigError, createPool } from '@commerce/db';
+import { claimDueOrders, ConfigError, createPool, listOrderSkus } from '@commerce/db';
 import { completeShutdown, getActiveTelemetry, traceLogMixin } from '@commerce/telemetry';
 import { pino } from 'pino';
 import { loadConfig } from './config.js';
+import { createWorkerFaults } from './faults.js';
+import { loadFaultsConfig } from './faults-config.js';
 import { buildHealthServer } from './health-server.js';
 import { runWorkerLoop } from './loop.js';
 import { PassRegistry } from './pass-context.js';
@@ -17,6 +19,7 @@ const HARD_SHUTDOWN_DEADLINE_MS = 8000;
 
 async function main(): Promise<void> {
   const config = loadConfig(process.env);
+  const faultsConfig = loadFaultsConfig(process.env);
   const logger = pino({
     level: config.logLevel,
     base: { service: 'worker', workerId: config.workerId },
@@ -65,11 +68,16 @@ async function main(): Promise<void> {
     inflight: () => registry.size,
   });
   const { metrics } = workerTelemetry;
-  const provider = createPaymentSimulator({
+  // M5: fault injection exists only with FAULTS_ENABLED=true, and never starts a scenario itself.
+  const faults = faultsConfig.enabled
+    ? createWorkerFaults({ skusOf: (orderId) => listOrderSkus(pool, orderId) })
+    : null;
+  const simulator = createPaymentSimulator({
     pool: simulatorPool,
     logger,
     latencyMs: config.paymentLatencyMs,
   });
+  const provider = faults ? faults.wrapProvider(simulator) : simulator;
   const processor = createProcessor({
     pool,
     provider,
@@ -78,13 +86,18 @@ async function main(): Promise<void> {
     paymentTimeoutMs: config.paymentTimeoutMs,
     registry,
     metrics,
+    ...(faults ? { hooks: faults.hooks } : {}),
   });
   const policy = {
     maxReconciliationAttempts: config.limits.maxReconciliationAttempts,
     paymentUnknownRecheckMs: config.limits.paymentUnknownRecheckMs,
   };
 
-  const health = buildHealthServer({ pool, logger });
+  const health = buildHealthServer({
+    pool,
+    logger,
+    ...(faults ? { faultControl: faults.control } : {}),
+  });
   const controller = new AbortController();
   const loopDone = runWorkerLoop(
     {
@@ -120,6 +133,8 @@ async function main(): Promise<void> {
       process.exit(1);
     }, HARD_SHUTDOWN_DEADLINE_MS).unref();
     workerTelemetry.stopSampler();
+    // M5: release hung passes and pending payment calls before the M2 drain begins.
+    faults?.controller.shutdown();
 
     shutdownWorker({
       stopLoop: () => {

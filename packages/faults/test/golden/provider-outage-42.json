@@ -1,0 +1,64 @@
+{
+  "affectedComponents": [
+    "payment-provider",
+    "worker"
+  ],
+  "dataEffects": [
+    "Affected orders spend their charge budget, then their reconciliation budget, and park in payment_unknown with their stock still reserved.",
+    "Parked orders are rechecked after PAYMENT_UNKNOWN_RECHECK_MS; with the provider back, they are voided and fail, releasing their stock."
+  ],
+  "description": "The payment provider is unavailable for both charges and lookups, so orders exhaust their charge budget, fail reconciliation, and park in payment_unknown with their stock held.",
+  "expectedRemediation": [
+    "Restore the payment provider.",
+    "Let the parked orders be rechecked, or recheck them sooner, and confirm none stay in payment_unknown."
+  ],
+  "faultParameters": {
+    "error": "provider_unavailable",
+    "operations": "charge,lookup_or_void"
+  },
+  "primarySymptom": {
+    "comparison": "gt",
+    "deadlineSeconds": 120,
+    "description": "Reconciliation lookups against the payment provider fail.",
+    "evaluation": "increase",
+    "matchers": {
+      "job": "worker",
+      "payment_operation": "lookup_or_void",
+      "payment_result": "error"
+    },
+    "metric": "commerce_payment_calls_total",
+    "signal": "metric",
+    "threshold": 0,
+    "windowSeconds": 60
+  },
+  "rootCause": {
+    "component": "payment-provider",
+    "summary": "The payment provider rejects every charge and lookup as unavailable."
+  },
+  "scenario": {
+    "name": "provider-outage",
+    "seed": 42,
+    "version": 1
+  },
+  "schemaVersion": "1.0.0",
+  "secondarySymptoms": [
+    {
+      "comparison": "gt",
+      "deadlineSeconds": 120,
+      "description": "Orders park in payment_unknown.",
+      "evaluation": "max_over_time",
+      "matchers": {
+        "job": "worker",
+        "order_status": "payment_unknown"
+      },
+      "metric": "commerce_orders",
+      "signal": "metric",
+      "threshold": 0,
+      "windowSeconds": 60
+    }
+  ],
+  "timeline": {
+    "durationMs": 90000,
+    "triggerOffsetMs": 30000
+  }
+}
