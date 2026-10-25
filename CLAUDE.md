@@ -52,4 +52,3 @@ A small, observable e-commerce backend whose real job is to produce realistic, r
 - After pushing a milestone, verify the GitHub Actions result before marking the milestone complete. Distinguish completed checks from pending verification.
 - Keep prompts and reports concise. Do not repeat completed reviews or checks unless relevant code, configuration, or documentation has changed.
 - For read-only review or planning tasks, do not modify files or run tests unless explicitly authorized.
-
