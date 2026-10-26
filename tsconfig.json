@@ -24,6 +24,9 @@
     },
     {
       "path": "apps/incident"
+    },
+    {
+      "path": "apps/web"
     }
   ]
 }

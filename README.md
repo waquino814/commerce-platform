@@ -101,6 +101,9 @@ pnpm dev
 | `pnpm e2e:prometheus`               | Local only: check that the metric catalog reaches Prometheus with the expected labels.         |
 | `pnpm loadgen`                      | Run a seeded load profile against the orders API, or print its plan hash with `--dry-run`.     |
 | `pnpm incident`                     | M5c: list scenarios, print a ground truth, validate a bundle, check readiness, run a scenario. |
+| `pnpm web`                          | M7, first slice: a read-only incident dashboard at `http://127.0.0.1:3100`.                    |
+| `pnpm web:dev`                      | The dashboard client with hot reload at `http://127.0.0.1:5173`; needs `pnpm web` running.     |
+| `pnpm web:build`                    | Build only the dashboard client into `apps/web/dist/client` (`pnpm build` includes it).        |
 
 `pnpm e2e:jaeger` needs the Compose stack running with telemetry (`docker compose up -d --build --wait`) and `DATABASE_URL` pointing at its Postgres, as the default `.env` does. It places one order and exits 1 with diagnostics if the traces are missing or unlinked. It is not part of CI.
 
@@ -116,6 +119,17 @@ pnpm dev
 
 The design is in [docs/prompts/m4-design.md](docs/prompts/m4-design.md).
 
+### Incident dashboard
+
+`apps/web` is a read-only dashboard over the incident bundles (React, TypeScript, Vite, Tailwind CSS). It lists every run in `INCIDENTS_DIR` with its scenario, detection time and validation result; shows each run's ground truth, primary-symptom series, logs, sample traces and evidence files; and shows live readiness of the orders API, worker, Prometheus and Jaeger. Everything shown comes from the bundles on disk or from the components' own endpoints at request time. It never starts a run or changes fault state.
+
+```sh
+pnpm build   # compiles the server and builds the client into apps/web/dist/client
+pnpm web     # http://127.0.0.1:3100
+```
+
+For client development, run `pnpm web` (the API) and `pnpm web:dev` side by side, and open `http://127.0.0.1:5173`; Vite proxies `/api` to port 3100. The server binds only to `127.0.0.1`. Its settings (`WEB_PORT`, `INCIDENTS_DIR`, `ORDERS_API_URL`, `WORKER_HEALTH_URL`, `PROMETHEUS_URL`, `JAEGER_URL`) are in `.env.example`; upstream URLs must use `127.0.0.1` or `[::1]`. Without the stack running, the incident views still work and the health view reports each component as unreachable. Its tests run with `pnpm test`: the server against bundles written to temporary directories, the client in jsdom against a stubbed `fetch`.
+
 Worker settings, such as concurrency, timeouts, retry limits, and backoff, are documented in `.env.example`. The worker refuses to start with an unsafe combination, for example a claim timeout shorter than 1.5 times its processing budget.
 
 ## Layout
@@ -123,6 +137,7 @@ Worker settings, such as concurrency, timeouts, retry limits, and backoff, are d
 ```
 apps/orders-api      HTTP API: routes, validation, pricing
 apps/worker          slot-based loop, processor, payment simulator, shutdown
+apps/web             read-only incident dashboard: Fastify JSON API and React client
 packages/db          migrations, seed, and all order data access
 infra/postgres/init  creates the commerce_test database on first start
 docs/                architecture, roadmap, ADRs, design and prompts

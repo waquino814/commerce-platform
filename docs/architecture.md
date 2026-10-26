@@ -67,6 +67,8 @@ A React UI is planned for M7, after M5 and before the separate Engineering Opera
 - **Demo scenarios use the same API as everything else.** The M5 scenario control endpoints list, start, stop, and report on scenarios, and exist only when `FAULTS_ENABLED=true`.
 - **No UI concerns leak into the backend yet.** CORS, sessions, and static file serving are decided in M7.
 
+A first slice started early, by the owner's decision (`docs/roadmap.md`, M7): `apps/web`, a host-side, read-only incident dashboard that reads the bundles under `INCIDENTS_DIR` and serves only `127.0.0.1`. It does not use or change the orders API, so the rules above are unaffected. Its stack is React and TypeScript, built with Vite and styled with Tailwind CSS. A Fastify server in `apps/web` serves the built client and a GET-only JSON API: `/api/incidents`, `/api/incidents/:id`, `/api/incidents/:id/telemetry` (the symptom series, log summary and sample traces derived from the bundle's own files) and `/api/incidents/:id/files/:file` for the five bundle files only. `/api/health` reads each component's own readiness endpoint (orders API and worker `/readyz`, Prometheus `/-/ready`, the Jaeger UI) and `GET /admin/scenarios/active`, live, at request time; every upstream must be an http URL on `127.0.0.1` or `[::1]`. The dashboard cannot start or stop scenarios.
+
 ## Fault scenarios
 
 A scenario has a name, a seed, a start trigger, a duration, and a ground-truth description. Planned examples:
