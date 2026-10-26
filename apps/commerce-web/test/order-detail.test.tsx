@@ -222,6 +222,6 @@ describe('order details', () => {
     slow.release(ok({ status: 'pending' }));
     await flush(60_000);
     expect(calls).toHaveLength(2);
-    expect(screen.getByRole('heading', { name: 'Order history' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Your Orders' })).toBeTruthy();
   });
 });

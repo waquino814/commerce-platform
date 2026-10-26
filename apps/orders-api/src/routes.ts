@@ -39,9 +39,19 @@ export const idempotencyKeySchema = z
 
 const orderParams = z.strictObject({ id: z.uuid() });
 
+export const ORDER_STATUSES = [
+  'pending',
+  'processing',
+  'payment_unknown',
+  'paid',
+  'failed',
+] as const;
+
 export const listOrdersQuery = z.strictObject({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   after: z.uuid().optional(),
+  status: z.enum(ORDER_STATUSES).optional(),
+  q: z.string().trim().min(1).max(100).optional(),
 });
 
 /** JSON response shape: timestamps as ISO 8601 strings, money as integer cents. */
@@ -132,7 +142,8 @@ export function registerCommerceRoutes(app: FastifyInstance, deps: { pool: Pool 
     }
   });
 
-  // M7 order history: every order, newest first, without items. The API has no customer identity,
+  // M7 order history: every order, newest first, with a short item preview, optionally filtered by
+  // status or searched by order-ID prefix, SKU or product name. The API has no customer identity,
   // so this lists all orders (ADR 0004 names this gap). Read-only.
   app.get('/orders', async (request, reply) => {
     const query = listOrdersQuery.safeParse(request.query);
@@ -140,6 +151,8 @@ export function registerCommerceRoutes(app: FastifyInstance, deps: { pool: Pool 
     const page = await listOrders(deps.pool, {
       limit: query.data.limit,
       after: query.data.after ?? null,
+      status: query.data.status ?? null,
+      query: query.data.q ?? null,
     });
     if (!page) return sendError(reply, 400, 'invalid_cursor', 'the cursor names no order');
     return {

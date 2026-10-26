@@ -133,6 +133,10 @@ export function summary(n: number, overrides: Partial<OrderSummary> = {}): Order
     totalCents: 2000 + n,
     itemCount: 2,
     totalQuantity: 3,
+    items: [
+      { sku: 'SKU-00007', name: 'Product 7', quantity: 1 },
+      { sku: 'SKU-00042', name: 'Product 42', quantity: 2 },
+    ],
     failureReason: null,
     createdAt: '2026-10-25T12:00:00.000Z',
     updatedAt: '2026-10-25T12:00:05.000Z',

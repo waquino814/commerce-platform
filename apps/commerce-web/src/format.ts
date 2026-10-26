@@ -56,3 +56,24 @@ export const PAYMENT_DETAIL: Record<PaymentMethod, string> = {
 };
 
 export const shortId = (id: string) => id.slice(0, 8);
+
+/** "Oct 26, 2026", in UTC like every other time the UI shows. */
+export function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+/** "02:54 UTC". */
+export function formatClock(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.toISOString().slice(11, 16)} UTC`;
+}
+
+export const plural = (n: number, word: string) => `${String(n)} ${word}${n === 1 ? '' : 's'}`;

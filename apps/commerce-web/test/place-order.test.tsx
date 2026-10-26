@@ -174,7 +174,9 @@ describe('catalog', () => {
         : { body: { items: [product(7), product(42)], nextCursor: 'SKU-00042' } },
     );
     open();
-    expect(screen.getByRole('status').textContent).toContain('Loading products');
+    expect(
+      screen.getAllByRole('status').some((s) => s.textContent.includes('Loading products')),
+    ).toBe(true);
     const list = await screen.findByRole('list', { name: 'Products' });
     const card = within(list).getByText('Product 42').closest('li');
     expect(card?.textContent).toContain('$10.42');
@@ -227,7 +229,7 @@ describe('catalog', () => {
     open();
     const list = await screen.findByRole('list', { name: 'Products' });
     expect(within(list).getAllByText('Only 4 left').length).toBeGreaterThan(0);
-    expect(within(list).getAllByText('Out of stock').length).toBeGreaterThan(0);
+    expect(within(list).getAllByText('Sold out').length).toBe(2);
     const soldOut = screen.getByRole<HTMLButtonElement>('button', {
       name: 'Product 2 (SKU-00002) is out of stock',
     });

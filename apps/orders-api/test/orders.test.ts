@@ -238,6 +238,10 @@ describe('orders API', () => {
         totalCents: 2 * p42.priceCents + p7.priceCents,
         itemCount: 2,
         totalQuantity: 3,
+        items: [
+          { sku: p7.sku, name: p7.name, quantity: 1 },
+          { sku: p42.sku, name: p42.name, quantity: 2 },
+        ],
         failureReason: null,
         createdAt: '2026-10-25T11:00:00.000Z',
         updatedAt: expect.any(String) as unknown,
@@ -252,7 +256,16 @@ describe('orders API', () => {
       const page = (await list()).json<{ items: unknown[]; nextCursor: string | null }>();
       expect(page.items).toHaveLength(20);
       expect(page.nextCursor).not.toBeNull();
-      for (const q of ['?limit=0', '?limit=101', '?after=nope', '?status=paid']) {
+      for (const q of [
+        '?limit=0',
+        '?limit=101',
+        '?after=nope',
+        '?status=shipped',
+        '?q=',
+        '?q=%20%20',
+        `?q=${'x'.repeat(101)}`,
+        '?sort=asc',
+      ]) {
         const res = await list(q);
         expect(res.statusCode, q).toBe(400);
         expect(res.json(), q).toMatchObject({ error: 'validation_error' });
@@ -262,6 +275,94 @@ describe('orders API', () => {
       expect(unknown.json()).toEqual({
         error: 'invalid_cursor',
         message: 'the cursor names no order',
+      });
+    });
+
+    describe('filters and search', () => {
+      type Page = { items: { id: string; status: string }[]; nextCursor: string | null };
+      const ids = (q: string) => list(q).then((r) => r.json<Page>().items.map((o) => o.id));
+      const p300 = seedProduct(300);
+
+      async function threeOrders() {
+        const a = (await post(validBody)).json<{ id: string }>().id;
+        const b = (
+          await post({ items: [{ sku: p300.sku, quantity: 1 }], paymentMethod: 'pm_card_ok' })
+        ).json<{ id: string }>().id;
+        const c = (await post(validBody)).json<{ id: string }>().id;
+        // Newest first: c, b, a. Two of them are failed, one is paid.
+        await pool.query(
+          `UPDATE orders SET created_at = CASE id
+             WHEN $1::uuid THEN '2026-10-25T10:00:00Z'::timestamptz
+             WHEN $2::uuid THEN '2026-10-25T11:00:00Z'::timestamptz
+             ELSE '2026-10-25T12:00:00Z'::timestamptz END`,
+          [a, b],
+        );
+        // Bypass the lifecycle trigger's transition rules only to label rows for the filter.
+        await pool.query('ALTER TABLE orders DISABLE TRIGGER USER');
+        try {
+          await pool.query(
+            `UPDATE orders SET status = 'failed', failure_reason = 'payment_declined',
+                    failed_at = now(), inventory_reserved_at = now(), inventory_released_at = now()
+              WHERE id = ANY($1::uuid[])`,
+            [[a, c]],
+          );
+        } finally {
+          await pool.query('ALTER TABLE orders ENABLE TRIGGER USER');
+        }
+        return { a, b, c };
+      }
+
+      it('filters by status, keeping the newest-first order and the cursor', async () => {
+        const { a, b, c } = await threeOrders();
+        expect(await ids('?status=failed')).toEqual([c, a]);
+        expect(await ids('?status=pending')).toEqual([b]);
+        expect(await ids('?status=paid')).toEqual([]);
+        const first = (await list('?status=failed&limit=1')).json<Page>();
+        expect(first.items.map((o) => o.id)).toEqual([c]);
+        expect(first.nextCursor).toBe(c);
+        // The next page under the same filter skips the pending order in between.
+        expect(await ids(`?status=failed&limit=1&after=${c}`)).toEqual([a]);
+      });
+
+      it('searches by order-ID prefix, SKU or product name, case-insensitively', async () => {
+        const { a, b, c } = await threeOrders();
+        expect(await ids(`?q=${b.slice(0, 8).toUpperCase()}`)).toEqual([b]);
+        expect(await ids(`?q=${encodeURIComponent(p300.sku.toLowerCase())}`)).toEqual([b]);
+        expect(await ids(`?q=${encodeURIComponent(p42.name.slice(1, 5).toUpperCase())}`)).toEqual(
+          expect.arrayContaining([c, a]) as unknown,
+        );
+        expect(await ids('?q=SKU-0004')).toEqual([c, a]);
+        // Only a prefix of the ID matches, not a fragment from its middle.
+        expect(await ids(`?q=${b.slice(9, 13)}`)).not.toContain(b);
+        expect(await ids(`?q=${encodeURIComponent(p300.sku)}&status=failed`)).toEqual([]);
+        expect(
+          await ids(`?q=${encodeURIComponent(p42.sku)}&status=failed&limit=1&after=${c}`),
+        ).toEqual([a]);
+      });
+
+      it('matches LIKE wildcards literally', async () => {
+        await threeOrders();
+        expect(await ids('?q=%25')).toEqual([]);
+        expect(await ids('?q=_')).toEqual([]);
+        expect(await ids('?q=SKU%5F0')).toEqual([]);
+        expect(await ids(`?q=${encodeURIComponent('\\')}`)).toEqual([]);
+      });
+
+      it('previews at most three items, by SKU, with the full counts', async () => {
+        const items = [5, 4, 3, 2, 1].map((i) => ({ sku: seedProduct(i).sku, quantity: i }));
+        await post({ items, paymentMethod: 'pm_card_ok' });
+        const [order] = (await list()).json<{
+          items: { itemCount: number; totalQuantity: number; items: unknown[] }[];
+        }>().items;
+        expect(order?.itemCount).toBe(5);
+        expect(order?.totalQuantity).toBe(15);
+        expect(order?.items).toEqual(
+          [1, 2, 3].map((i) => ({
+            sku: seedProduct(i).sku,
+            name: seedProduct(i).name,
+            quantity: i,
+          })),
+        );
       });
     });
   });

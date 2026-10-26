@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { isTerminal, type Order, type OrderStatus } from '../api';
 import { ArrowLeftIcon, CheckIcon, XIcon } from '../components/icons';
+import { CopyButton } from '../components/CopyButton';
 import { ProductArt } from '../components/ProductArt';
 import {
   BUTTON,
@@ -22,7 +23,7 @@ export function OrderDetailPage({ id }: { id: string }) {
     <div className="space-y-6">
       <Link href="/orders" className={`${BUTTON.ghost} -ml-2.5`}>
         <ArrowLeftIcon />
-        Order history
+        Your Orders
       </Link>
       {!order && !error && <LoadingState label="Loading order" />}
       {error && !order && (
@@ -138,10 +139,13 @@ function OrderView({ order, live }: { order: Order; live: boolean }) {
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-600 dark:text-brand-400">
               Order
             </p>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              <span className="sr-only">Order </span>
-              <Mono className="text-[0.8em]">{order.id}</Mono>
-            </h1>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                <span className="sr-only">Order </span>
+                <Mono className="text-[0.8em]">{order.id}</Mono>
+              </h1>
+              <CopyButton value={order.id} label={`Copy order ID ${order.id}`} />
+            </div>
             <div className="flex flex-wrap items-center gap-3" aria-live="polite">
               <StatusBadge status={order.status} size="lg" />
               <span className="text-sm text-stone-600 dark:text-stone-400">

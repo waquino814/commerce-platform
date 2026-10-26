@@ -29,7 +29,7 @@ See [docs/roadmap.md](docs/roadmap.md) for milestone boundaries and acceptance c
 - **Orders API** (`apps/orders-api`, port 3000):
   - `GET /products`, with cursor pagination by SKU;
   - `POST /orders`, with optional `Idempotency-Key` support;
-  - `GET /orders`, the order history: all orders newest first, without items, with cursor pagination (M7);
+  - `GET /orders`, the order history (M7): all orders newest first, each with its first three items, with cursor pagination, an optional `status` filter, and `q` to search by order-ID prefix, SKU or product name;
   - `GET /orders/:id`;
   - `GET /healthz` and `GET /readyz`.
 - **Order worker** (`apps/worker`, health on port 3001):
@@ -138,7 +138,7 @@ Worker settings, such as concurrency, timeouts, retry limits, and backoff, are d
 
 ### Commerce UI
 
-`apps/commerce-web` is the customer-facing UI (React, TypeScript, Vite, Tailwind CSS), separate from the incident dashboard. It places orders (SKU, quantity and a test payment method, from typed SKUs or the real catalog), lists the order history, and shows an order's items, totals, timestamps and status, polling `GET /orders/:id` every 2 seconds until the order is `paid` or `failed`. It is a static client: it has no fault or scenario controls and reads nothing but the orders API.
+`apps/commerce-web` is the customer-facing UI (React, TypeScript, Vite, Tailwind CSS), separate from the incident dashboard. It places orders (SKU, quantity and a test payment method, from typed SKUs, the real catalog, or a product search with suggestions over the whole catalog), lists the order history with search and status filters, and shows an order's items, totals, timestamps and status, polling `GET /orders/:id` every 2 seconds until the order is `paid` or `failed`. It is a static client: it has no fault or scenario controls and reads nothing but the orders API.
 
 ```sh
 docker compose up -d --wait   # or any orders API on ORDERS_API_URL

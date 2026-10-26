@@ -11,17 +11,7 @@ import {
   TrashIcon,
 } from '../components/icons';
 import { ProductArt } from '../components/ProductArt';
-import {
-  BUTTON,
-  EmptyState,
-  ErrorState,
-  INPUT,
-  LoadingState,
-  Mono,
-  PageHeader,
-  StatusBadge,
-  SURFACE,
-} from '../components/ui';
+import { BUTTON, INPUT, Mono, StatusBadge, SURFACE } from '../components/ui';
 import { formatMoney, PAYMENT_DETAIL, PAYMENT_TEXT, STATUS_HELP } from '../format';
 import {
   MAX_LINES,
@@ -37,7 +27,11 @@ import {
   type Line,
 } from '../orderForm';
 import { Link } from '../router';
-import { useCatalog, type CatalogStatus } from '../useCatalog';
+import { scrollIntoView } from '../dom';
+import { useCatalog } from '../useCatalog';
+import { useProductIndex } from '../useProductIndex';
+import { Catalog } from '../components/Catalog';
+import { ProductSearch } from '../components/ProductSearch';
 
 const PAYMENT_METHODS = Object.keys(PAYMENT_TEXT) as PaymentMethod[];
 const newKey = () => crypto.randomUUID();
@@ -50,6 +44,9 @@ type Submit =
 
 export function PlaceOrderPage() {
   const catalog = useCatalog();
+  const index = useProductIndex();
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<{ sku: string; n: number } | null>(null);
   const nextLineKey = useRef(1);
   const [lines, setLines] = useState<Line[]>([{ key: 0, sku: '', quantity: '1' }]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pm_card_ok');
@@ -143,20 +140,46 @@ export function PlaceOrderPage() {
 
   return (
     <div className="pb-24 lg:pb-0">
-      <PageHeader
-        eyebrow="Storefront"
-        title="Shop the catalog"
-        description="Products, prices and stock come live from the orders API. Add items, choose a test card, and place a real order on your local stack."
-      />
+      <header className="mb-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-600 dark:text-brand-400">
+          Storefront
+        </p>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+          Shop the catalog
+        </h1>
+        <p className="mt-2 max-w-2xl text-[0.95rem] text-pretty text-stone-600 dark:text-stone-400">
+          Products, prices and stock come live from the orders API. Add items, choose a test card,
+          and place a real order on your local stack.
+        </p>
+        <div className="mt-6 max-w-2xl">
+          <ProductSearch
+            value={query}
+            onChange={setQuery}
+            products={index.products}
+            status={index.status}
+            onFocus={index.ensure}
+            onRetry={index.retry}
+            onSelect={(p) => {
+              setSelected((s) => ({ sku: p.sku, n: (s?.n ?? 0) + 1 }));
+            }}
+            onSubmit={() => {
+              scrollIntoView(document.getElementById('catalog-title'), { block: 'start' });
+            }}
+          />
+        </div>
+      </header>
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-8 lg:grid-cols-[minmax(0,1fr)_23rem] xl:grid-cols-[minmax(0,1fr)_25rem]">
-        <CatalogSection
-          products={catalog.products}
-          status={catalog.status}
-          hasMore={catalog.hasMore}
-          onMore={catalog.loadMore}
-          onRetry={catalog.retry}
+        <Catalog
+          paged={catalog}
+          index={index}
+          query={query}
+          selectedSku={selected}
           onAdd={addProduct}
           inOrder={inOrder}
+          onClearSearch={() => {
+            setQuery('');
+            setSelected(null);
+          }}
         />
 
         <section
@@ -590,166 +613,5 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
       <dt className="text-stone-600 dark:text-stone-400">{label}</dt>
       <dd className="min-w-0 text-right">{children}</dd>
     </div>
-  );
-}
-
-const stockText = (stock: number) =>
-  stock <= 0
-    ? 'Out of stock'
-    : stock < 10
-      ? `Only ${String(stock)} left`
-      : `${String(stock)} in stock`;
-
-function StockBadge({ stock }: { stock: number }) {
-  const tone =
-    stock <= 0
-      ? 'bg-rose-600 text-white'
-      : stock < 10
-        ? 'bg-amber-400 text-amber-950'
-        : 'bg-white/85 text-stone-800 dark:bg-stone-900/85 dark:text-stone-200';
-  return (
-    <span
-      className={`rounded-full px-2.5 py-1 text-[0.7rem] font-semibold shadow-sm backdrop-blur ${tone}`}
-    >
-      {stockText(stock)}
-    </span>
-  );
-}
-
-function CatalogSection({
-  products,
-  status,
-  hasMore,
-  onMore,
-  onRetry,
-  onAdd,
-  inOrder,
-}: {
-  products: Product[];
-  status: CatalogStatus;
-  hasMore: boolean;
-  onMore: () => void;
-  onRetry: () => void;
-  onAdd: (p: Product) => void;
-  inOrder: (sku: string) => number;
-}) {
-  const first = status === 'loading' && products.length === 0;
-  return (
-    <section aria-labelledby="catalog-title">
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="catalog-title" className="text-lg font-semibold tracking-tight">
-          Catalog
-        </h2>
-        {products.length > 0 && (
-          <p className="text-sm text-stone-600 dark:text-stone-400">
-            {products.length} product{products.length === 1 ? '' : 's'} shown
-          </p>
-        )}
-      </div>
-      {first && <LoadingState label="Loading products" variant="grid" />}
-      {products.length > 0 && (
-        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Products">
-          {products.map((p) => {
-            const count = inOrder(p.sku);
-            const out = p.stockAvailable <= 0;
-            return (
-              <li
-                key={p.sku}
-                className="group flex overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-card transition duration-200 hover:border-stone-300 hover:shadow-lift motion-safe:hover:-translate-y-0.5 sm:flex-col dark:border-stone-800 dark:bg-stone-900 dark:hover:border-stone-700"
-              >
-                <div className="relative w-28 shrink-0 sm:w-auto">
-                  <ProductArt
-                    sku={p.sku}
-                    name={p.name}
-                    className="h-full min-h-28 text-2xl sm:aspect-[16/10] sm:h-auto sm:min-h-0 sm:text-4xl"
-                  />
-                  <div className="absolute left-3 top-3 hidden sm:block">
-                    <StockBadge stock={p.stockAvailable} />
-                  </div>
-                  {count > 0 && (
-                    <span className="absolute right-3 top-3 hidden rounded-full bg-brand-600 sm:inline px-2.5 py-1 text-[0.7rem] font-semibold text-white shadow-sm">
-                      {count} in order
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-1 flex-col p-4">
-                  <h3 className="font-semibold tracking-tight">{p.name}</h3>
-                  <p className="mt-0.5 text-xs text-stone-600 dark:text-stone-400">
-                    <Mono>{p.sku}</Mono>
-                  </p>
-                  <p className="mt-1 text-xs font-medium text-stone-600 sm:hidden dark:text-stone-400">
-                    {stockText(p.stockAvailable)}
-                    {count > 0 && (
-                      <span className="text-brand-700 dark:text-brand-300">
-                        {' '}
-                        · {count} in order
-                      </span>
-                    )}
-                  </p>
-                  <div className="mt-auto flex items-center justify-between gap-3 pt-3 sm:pt-4">
-                    <p className="text-lg font-semibold tracking-tight tabular-nums">
-                      {formatMoney(p.priceCents, p.currency)}
-                    </p>
-                    <button
-                      type="button"
-                      className={`${BUTTON.primary} px-3.5 py-2`}
-                      onClick={() => {
-                        onAdd(p);
-                      }}
-                      disabled={out}
-                      aria-label={
-                        out ? `${p.name} (${p.sku}) is out of stock` : `Add ${p.name} (${p.sku})`
-                      }
-                    >
-                      {out ? (
-                        'Sold out'
-                      ) : (
-                        <>
-                          <PlusIcon />
-                          Add
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {typeof status === 'object' && (
-        <div className={products.length > 0 ? 'mt-4' : ''}>
-          <ErrorState title="Could not load the catalog" error={status.error} onRetry={onRetry} />
-        </div>
-      )}
-      {status === 'idle' && products.length === 0 && (
-        <EmptyState title="The catalog is empty" icon={<BagIcon />}>
-          Seed it with <Mono>pnpm db:seed</Mono>.
-        </EmptyState>
-      )}
-      {(hasMore || (status === 'loading' && products.length > 0)) && typeof status !== 'object' && (
-        <div className="mt-6 flex justify-center">
-          <button
-            type="button"
-            className={BUTTON.secondary}
-            onClick={onMore}
-            disabled={status === 'loading'}
-          >
-            {status === 'loading' ? (
-              <>
-                <Spinner />
-                Loading products…
-              </>
-            ) : (
-              'Show more products'
-            )}
-          </button>
-        </div>
-      )}
-      <p className="mt-4 text-xs text-stone-600 dark:text-stone-400">
-        Stock is reserved when the order is processed, not when it is placed, so it can change in
-        between.
-      </p>
-    </section>
   );
 }

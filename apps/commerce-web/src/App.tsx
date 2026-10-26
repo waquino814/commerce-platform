@@ -11,10 +11,10 @@ const NAV: {
   icon: typeof BagIcon;
   active: (r: Route['name']) => boolean;
 }[] = [
-  { href: '/', label: 'Place order', icon: BagIcon, active: (r) => r === 'place' },
+  { href: '/', label: 'Shop', icon: BagIcon, active: (r) => r === 'place' },
   {
     href: '/orders',
-    label: 'Order history',
+    label: 'Your Orders',
     icon: ReceiptIcon,
     active: (r) => r === 'orders' || r === 'order',
   },
@@ -52,25 +52,24 @@ export function App() {
       >
         Skip to content
       </a>
-      <header className="sticky top-0 z-30 border-b border-stone-200/70 bg-white/75 backdrop-blur-md dark:border-stone-800/70 dark:bg-stone-950/70">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+      <header className="sticky top-0 z-30 border-b border-stone-200/80 bg-white/85 backdrop-blur-md dark:border-stone-800/80 dark:bg-stone-950/80">
+        <div className="mx-auto flex h-16 max-w-6xl items-stretch justify-between gap-3 px-4 sm:px-6">
           <Link
             href="/"
-            className="flex items-center gap-2.5 rounded-lg"
+            className="flex items-center gap-2.5 self-center rounded-lg"
             aria-label="Commerce Platform, home"
           >
             <Logo />
             <span className="hidden leading-tight min-[480px]:block">
-              <span className="block font-semibold tracking-tight">Commerce Platform</span>
+              <span className="block text-[0.95rem] font-semibold tracking-tight">
+                Commerce Platform
+              </span>
               <span className="hidden text-xs text-stone-500 sm:block dark:text-stone-400">
                 Local storefront
               </span>
             </span>
           </Link>
-          <nav
-            aria-label="Main"
-            className="flex gap-1 rounded-xl bg-stone-100/80 p-1 dark:bg-stone-900"
-          >
+          <nav aria-label="Main" className="flex items-stretch gap-1 sm:gap-2">
             {NAV.map((n) => {
               const active = n.active(route.name);
               const Icon = n.icon;
@@ -79,9 +78,13 @@ export function App() {
                   key={n.href}
                   href={n.href}
                   aria-current={active ? 'page' : undefined}
-                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-brand-500 ${active ? 'bg-white text-stone-900 shadow-sm dark:bg-stone-800 dark:text-white' : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white'}`}
+                  className={`relative flex items-center gap-2 whitespace-nowrap px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-brand-500 after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full ${
+                    active
+                      ? 'text-stone-900 after:bg-brand-600 dark:text-white dark:after:bg-brand-400'
+                      : 'text-stone-600 after:bg-transparent hover:text-stone-900 hover:after:bg-stone-300 dark:text-stone-400 dark:hover:text-white dark:hover:after:bg-stone-600'
+                  }`}
                 >
-                  <Icon className="hidden sm:block" />
+                  <Icon className="text-base" />
                   {n.label}
                 </Link>
               );

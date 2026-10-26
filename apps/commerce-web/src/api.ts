@@ -48,6 +48,20 @@ export interface Order {
   failedAt: string | null;
 }
 
+export const ORDER_STATUSES: readonly OrderStatus[] = [
+  'pending',
+  'processing',
+  'payment_unknown',
+  'paid',
+  'failed',
+];
+
+export interface OrderItemPreview {
+  sku: string;
+  name: string;
+  quantity: number;
+}
+
 export interface OrderSummary {
   id: string;
   status: OrderStatus;
@@ -55,6 +69,8 @@ export interface OrderSummary {
   totalCents: number;
   itemCount: number;
   totalQuantity: number;
+  /** Up to the first three lines by SKU. Absent from orders APIs built before the preview. */
+  items?: OrderItemPreview[];
   failureReason: FailureReason | null;
   createdAt: string;
   updatedAt: string;
@@ -131,8 +147,14 @@ const query = (params: Record<string, string | number | null | undefined>) => {
 export const api = {
   products: (after: string | null, limit: number, signal?: AbortSignal) =>
     request<Page<Product>>(`/products${query({ limit, after })}`, { signal }),
-  orders: (after: string | null, limit: number, signal?: AbortSignal) =>
-    request<Page<OrderSummary>>(`/orders${query({ limit, after })}`, { signal }),
+  orders: (
+    params: { after: string | null; limit: number; status?: OrderStatus | null; q?: string | null },
+    signal?: AbortSignal,
+  ) =>
+    request<Page<OrderSummary>>(
+      `/orders${query({ limit: params.limit, after: params.after, status: params.status, q: params.q })}`,
+      { signal },
+    ),
   order: (id: string, signal?: AbortSignal) =>
     request<Order>(`/orders/${encodeURIComponent(id)}`, { signal }),
   /** The Idempotency-Key makes a retry after a lost response return the same order. */

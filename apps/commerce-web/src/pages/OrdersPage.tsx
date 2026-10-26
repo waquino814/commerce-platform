@@ -1,62 +1,109 @@
-import { useEffect, useState } from 'react';
-import { api, type OrderSummary } from '../api';
-import { ArrowRightIcon, ReceiptIcon, RefreshIcon, Spinner } from '../components/icons';
-import {
-  BUTTON,
-  EmptyState,
-  ErrorState,
-  LoadingState,
-  Mono,
-  PageHeader,
-  StatusBadge,
-  SURFACE,
-} from '../components/ui';
-import { FAILURE_TEXT, formatDateTime, formatMoney, shortId } from '../format';
+import { useEffect, useId, useState } from 'react';
+import { api, ApiError, ORDER_STATUSES, type OrderStatus, type OrderSummary } from '../api';
+import { ReceiptIcon, RefreshIcon, SearchIcon, Spinner, XIcon } from '../components/icons';
+import { OrderCard } from '../components/OrderCard';
+import { BUTTON, EmptyState, ErrorState, LoadingState, PageHeader } from '../components/ui';
+import { STATUS_TEXT, plural } from '../format';
 import { Link } from '../router';
 
 export const HISTORY_PAGE = 20;
+export const SEARCH_DEBOUNCE_MS = 300;
 
-/** Order history from GET /orders: every order, newest first, paged by cursor. */
+type Request = { after: string | null; status: OrderStatus | null; q: string | null; n: number };
+
+/** The search the API runs: an order-ID prefix (a leading # is ignored), or part of a SKU or name. */
+export function orderQuery(raw: string): string | null {
+  const q = raw.trim().replace(/^#/, '').trim();
+  return q === '' ? null : q.slice(0, 100);
+}
+
+/**
+ * "Your Orders": GET /orders, newest first, paged by cursor. Search and the status filter run on
+ * the server across every order, so a filter never hides orders that simply weren't loaded yet.
+ * Any change to them starts again from the first page, so a cursor is only ever reused under the
+ * filter that produced it. The API has no customer identity: these are all orders on this store.
+ */
 export function OrdersPage() {
+  const searchId = useId();
+  const [input, setInput] = useState('');
+  const [status, setStatus] = useState<OrderStatus | null>(null);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
-  const [request, setRequest] = useState<{ after: string | null; n: number }>({
-    after: null,
-    n: 0,
-  });
+  const [request, setRequest] = useState<Request>({ after: null, status: null, q: null, n: 0 });
   const [state, setState] = useState<'loading' | 'idle' | { error: Error }>('loading');
+
+  // Debounce typing; a new search or filter always restarts from the first page.
+  useEffect(() => {
+    const q = orderQuery(input);
+    if (q === request.q) return;
+    const t = setTimeout(() => {
+      setRequest((r) => ({ after: null, status: r.status, q, n: r.n + 1 }));
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(t);
+    };
+  }, [input, request.q]);
 
   useEffect(() => {
     const controller = new AbortController();
     setState('loading');
-    api.orders(request.after, HISTORY_PAGE, controller.signal).then(
-      (page) => {
-        if (controller.signal.aborted) return;
-        setOrders((os) => (request.after === null ? page.items : [...os, ...page.items]));
-        setCursor(page.nextCursor);
-        setState('idle');
-      },
-      (error: unknown) => {
-        if (!controller.signal.aborted)
-          setState({ error: error instanceof Error ? error : new Error(String(error)) });
-      },
-    );
+    // A first page (new search, filter or refresh) replaces the list, so orders from another
+    // filter are never shown under this one, not even next to an error.
+    if (request.after === null) {
+      setOrders([]);
+      setCursor(null);
+    }
+    api
+      .orders(
+        { after: request.after, limit: HISTORY_PAGE, status: request.status, q: request.q },
+        controller.signal,
+      )
+      .then(
+        (page) => {
+          if (controller.signal.aborted) return;
+          setOrders((os) => (request.after === null ? page.items : [...os, ...page.items]));
+          setCursor(page.nextCursor);
+          setState('idle');
+        },
+        (error: unknown) => {
+          if (!controller.signal.aborted)
+            setState({ error: error instanceof Error ? error : new Error(String(error)) });
+        },
+      );
     return () => {
       controller.abort();
     };
   }, [request]);
 
-  const refresh = () => {
-    setRequest((r) => ({ after: null, n: r.n + 1 }));
-  };
+  const filtering = request.q !== null || request.status !== null;
+  const pendingSearch = orderQuery(input) !== request.q;
   const firstLoad = state === 'loading' && request.after === null;
+  const choose = (s: OrderStatus | null) => {
+    setStatus(s);
+    setRequest((r) => ({ after: null, status: s, q: orderQuery(input), n: r.n + 1 }));
+  };
+  const refresh = () => {
+    setRequest((r) => ({ ...r, after: null, n: r.n + 1 }));
+  };
+  const clearAll = () => {
+    setInput('');
+    setStatus(null);
+    setRequest((r) => ({ after: null, status: null, q: null, n: r.n + 1 }));
+  };
+  const error = typeof state === 'object' ? state.error : null;
+  // Orders APIs built before M7's filters reject the new parameters as unknown.
+  const unsupported =
+    error instanceof ApiError &&
+    error.status === 400 &&
+    error.code === 'validation_error' &&
+    filtering;
 
   return (
-    <div>
+    <div className="mx-auto max-w-4xl">
       <PageHeader
-        eyebrow="Account"
-        title="Order history"
-        description="All orders, newest first. Open an order to follow its status live."
+        eyebrow="Orders"
+        title="Your Orders"
+        description="Every order placed on this store, newest first. There are no customer accounts, so this lists all orders. Open one to follow its status live."
         actions={
           <button
             type="button"
@@ -64,87 +111,137 @@ export function OrdersPage() {
             onClick={refresh}
             disabled={state === 'loading'}
           >
-            {firstLoad ? <Spinner /> : <RefreshIcon />}
+            {state === 'loading' ? <Spinner /> : <RefreshIcon />}
             Refresh
           </button>
         }
       />
 
+      <div className="mb-6 space-y-4">
+        <div>
+          <label htmlFor={searchId} className="sr-only">
+            Search orders
+          </label>
+          <div className="flex h-12 items-center gap-3 rounded-full border border-stone-300 bg-white px-4 shadow-card focus-within:border-brand-500 focus-within:ring-4 focus-within:ring-brand-500/15 dark:border-stone-700 dark:bg-stone-900">
+            <SearchIcon className="shrink-0 text-lg text-stone-500 dark:text-stone-400" />
+            <input
+              id={searchId}
+              type="search"
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+              }}
+              placeholder="Search by order ID, product name or SKU"
+              autoComplete="off"
+              spellCheck={false}
+              className="h-full min-w-0 flex-1 bg-transparent text-[0.95rem] placeholder:text-stone-500 focus:outline-none [&::-webkit-search-cancel-button]:hidden dark:placeholder:text-stone-400"
+            />
+            {pendingSearch && <Spinner className="shrink-0 text-stone-400" />}
+            {input !== '' && (
+              <button
+                type="button"
+                aria-label="Clear order search"
+                onClick={() => {
+                  setInput('');
+                }}
+                className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-stone-900 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+              >
+                <XIcon />
+              </button>
+            )}
+          </div>
+        </div>
+        <div
+          role="group"
+          aria-label="Filter by status"
+          className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0"
+        >
+          {[null, ...ORDER_STATUSES].map((s) => {
+            const on = status === s;
+            return (
+              <button
+                key={s ?? 'all'}
+                type="button"
+                aria-pressed={on}
+                onClick={() => {
+                  choose(s);
+                }}
+                className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium ring-1 ring-inset transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 ${
+                  on
+                    ? 'bg-stone-900 text-white ring-stone-900 dark:bg-stone-100 dark:text-stone-900 dark:ring-stone-100'
+                    : 'bg-white text-stone-700 ring-stone-300 hover:bg-stone-50 dark:bg-stone-900 dark:text-stone-300 dark:ring-stone-700 dark:hover:bg-stone-800'
+                }`}
+              >
+                {s === null ? 'All orders' : STATUS_TEXT[s]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <p
+        role="status"
+        aria-live="polite"
+        className="mb-4 text-sm text-stone-600 dark:text-stone-400"
+      >
+        {state === 'idle' &&
+          orders.length > 0 &&
+          `Showing ${plural(orders.length, 'order')}${request.status ? ` · ${STATUS_TEXT[request.status]}` : ''}${request.q ? ` matching “${request.q}”` : ''}${cursor ? '. Older orders load below.' : '.'}`}
+      </p>
+
       {firstLoad && <LoadingState label="Loading orders" />}
-      {typeof state === 'object' && orders.length === 0 && (
-        <ErrorState title="Could not load orders" error={state.error} onRetry={refresh} />
+      {error && orders.length === 0 && !firstLoad && (
+        <ErrorState
+          title={
+            unsupported ? 'This orders API cannot search or filter yet' : 'Could not load orders'
+          }
+          error={
+            unsupported
+              ? new Error(
+                  'Search and status filters need an orders API built from this version. Clear them to see all orders.',
+                )
+              : error
+          }
+          onRetry={unsupported ? clearAll : refresh}
+          retryLabel={unsupported ? 'Clear search and filters' : 'Try again'}
+        />
       )}
-      {state === 'idle' && orders.length === 0 && (
+      {state === 'idle' && orders.length === 0 && !filtering && (
         <EmptyState title="No orders yet" icon={<ReceiptIcon />}>
-          Orders you place appear here with their live status.{' '}
+          Orders placed on this store appear here with their live status.{' '}
           <Link href="/" className={BUTTON.link}>
             Place the first order
           </Link>
         </EmptyState>
       )}
+      {state === 'idle' && orders.length === 0 && filtering && (
+        <EmptyState title="No orders match" icon={<SearchIcon />}>
+          {request.q ? `Nothing matches “${request.q}”` : 'No orders have this status'}
+          {request.q && request.status ? ` with status ${STATUS_TEXT[request.status]}` : ''}.{' '}
+          <button type="button" className={BUTTON.link} onClick={clearAll}>
+            Clear search and filters
+          </button>
+        </EmptyState>
+      )}
       {orders.length > 0 && !firstLoad && (
-        <section className={`${SURFACE} overflow-hidden`}>
-          <div
-            aria-hidden="true"
-            className="hidden grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] gap-4 border-b border-stone-200/80 bg-stone-50/80 px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-stone-500 md:grid dark:border-stone-800 dark:bg-stone-950/40 dark:text-stone-400"
-          >
-            <span>Order</span>
-            <span>Placed</span>
-            <span>Items</span>
-            <span className="text-right">Total</span>
-            <span className="w-36 text-right">Status</span>
-          </div>
-          <ul className="divide-y divide-stone-200/80 dark:divide-stone-800" aria-label="Orders">
+        <>
+          <ol className="space-y-4" aria-label="Orders">
             {orders.map((o) => (
-              <li
-                key={o.id}
-                className="group relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 px-5 py-4 transition-colors hover:bg-stone-50 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] md:items-center dark:hover:bg-stone-800/40"
-              >
-                <div className="min-w-0">
-                  <Link
-                    href={`/orders/${o.id}`}
-                    className="font-semibold text-stone-900 after:absolute after:inset-0 after:content-[''] focus-visible:outline-none dark:text-stone-100"
-                    aria-label={`Order ${o.id}`}
-                  >
-                    <span className="text-stone-500 dark:text-stone-400">#</span>
-                    <Mono className="text-[0.95em]">{shortId(o.id)}</Mono>
-                  </Link>
-                  {o.failureReason && (
-                    <p className="mt-0.5 text-xs text-rose-700 dark:text-rose-300">
-                      {FAILURE_TEXT[o.failureReason]}
-                    </p>
-                  )}
-                </div>
-                <div className="col-start-2 row-start-1 flex justify-end md:col-start-auto md:row-start-auto md:hidden">
-                  <StatusBadge status={o.status} />
-                </div>
-                <p className="text-sm text-stone-600 dark:text-stone-400">
-                  <time dateTime={o.createdAt}>{formatDateTime(o.createdAt)}</time>
-                </p>
-                <p className="text-sm text-stone-600 md:text-stone-700 dark:text-stone-400 dark:md:text-stone-300">
-                  {o.itemCount} product{o.itemCount === 1 ? '' : 's'} · {o.totalQuantity} unit
-                  {o.totalQuantity === 1 ? '' : 's'}
-                </p>
-                <p className="col-start-2 row-start-2 text-right text-sm font-semibold tabular-nums md:col-start-auto md:row-start-auto">
-                  {formatMoney(o.totalCents, o.currency)}
-                </p>
-                <div className="hidden w-36 items-center justify-end gap-2 md:flex">
-                  <StatusBadge status={o.status} />
-                  <ArrowRightIcon className="text-stone-400 transition-transform motion-safe:group-hover:translate-x-0.5" />
-                </div>
+              <li key={o.id}>
+                <OrderCard order={o} />
               </li>
             ))}
-          </ul>
+          </ol>
           {state === 'loading' && (
-            <div className="border-t border-stone-200/80 p-5 dark:border-stone-800">
+            <div className="mt-4">
               <LoadingState label="Loading more orders" />
             </div>
           )}
-          {typeof state === 'object' && (
-            <div className="border-t border-stone-200/80 p-5 dark:border-stone-800">
+          {error && (
+            <div className="mt-4">
               <ErrorState
                 title="Could not load more orders"
-                error={state.error}
+                error={error}
                 onRetry={() => {
                   setRequest((r) => ({ ...r, n: r.n + 1 }));
                 }}
@@ -152,19 +249,19 @@ export function OrdersPage() {
             </div>
           )}
           {state === 'idle' && cursor && (
-            <div className="border-t border-stone-200/80 p-4 text-center dark:border-stone-800">
+            <div className="mt-6 text-center">
               <button
                 type="button"
                 className={BUTTON.secondary}
                 onClick={() => {
-                  setRequest((r) => ({ after: cursor, n: r.n + 1 }));
+                  setRequest((r) => ({ ...r, after: cursor, n: r.n + 1 }));
                 }}
               >
                 Load older orders
               </button>
             </div>
           )}
-        </section>
+        </>
       )}
     </div>
   );

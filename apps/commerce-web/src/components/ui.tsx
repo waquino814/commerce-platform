@@ -191,10 +191,12 @@ export function ErrorState({
   title = 'Something went wrong',
   error,
   onRetry,
+  retryLabel = 'Try again',
 }: {
   title?: string;
   error: Error;
   onRetry?: () => void;
+  retryLabel?: string;
 }) {
   return (
     <div
@@ -208,7 +210,7 @@ export function ErrorState({
         {onRetry && (
           <button type="button" onClick={onRetry} className={`${BUTTON.danger} mt-3`}>
             <RefreshIcon />
-            Try again
+            {retryLabel}
           </button>
         )}
       </div>

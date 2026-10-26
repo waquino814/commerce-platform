@@ -530,7 +530,14 @@ export async function getOrder(db: Queryable, orderId: string): Promise<OrderVie
   };
 }
 
-/** One row of the order history: the order without its items, with item counts. */
+/** One line of an order-history preview. */
+export interface OrderItemPreview {
+  sku: string;
+  name: string;
+  quantity: number;
+}
+
+/** One row of the order history: the order with item counts and a short item preview. */
 export interface OrderSummaryView {
   id: string;
   status: OrderStatus;
@@ -540,23 +547,44 @@ export interface OrderSummaryView {
   itemCount: number;
   /** Units across all items. */
   totalQuantity: number;
+  /** The first ORDER_PREVIEW_ITEMS lines by SKU; `itemCount` says how many there are in all. */
+  items: OrderItemPreview[];
   failureReason: FailureReason | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
+export const ORDER_PREVIEW_ITEMS = 3;
+
+export interface ListOrdersParams {
+  limit: number;
+  after: string | null;
+  /** Only orders in this status. */
+  status?: OrderStatus | null;
+  /**
+   * Case-insensitive search: an order-ID prefix, or part of any item's SKU or product name.
+   * LIKE wildcards in it are matched literally.
+   */
+  query?: string | null;
+}
+
+const escapeLike = (value: string) => value.replace(/[\\%_]/g, '\\$&');
+
 /**
- * Keyset pagination over all orders, newest first, ordered by (created_at, id). The cursor is the
- * last order's ID. Returns null when the cursor names no order, so the caller can reject it.
+ * Keyset pagination over all orders, newest first, ordered by (created_at, id), optionally
+ * filtered. The cursor is the last order's ID; filters apply before the page is cut, so a cursor
+ * from one filter is still a valid position under another. Returns null when the cursor names no
+ * order, so the caller can reject it.
  */
 export async function listOrders(
   db: Queryable,
-  params: { limit: number; after: string | null },
+  params: ListOrdersParams,
 ): Promise<{ items: OrderSummaryView[]; nextCursor: string | null } | null> {
   if (params.after !== null) {
     const cursor = await db.query('SELECT 1 FROM orders WHERE id = $1', [params.after]);
     if (cursor.rowCount === 0) return null;
   }
+  const query = params.query?.trim() ? params.query.trim() : null;
   const result = await db.query<{
     id: string;
     status: OrderStatus;
@@ -564,22 +592,44 @@ export async function listOrders(
     total_cents: number;
     item_count: number;
     total_quantity: number;
+    preview: OrderItemPreview[];
     failure_reason: FailureReason | null;
     created_at: Date;
     updated_at: Date;
   }>(
     `SELECT o.id, o.status, o.currency, o.total_cents, o.failure_reason, o.created_at,
-            o.updated_at, i.item_count, i.total_quantity
+            o.updated_at, i.item_count, i.total_quantity, pv.preview
        FROM orders o
        CROSS JOIN LATERAL (
          SELECT count(*)::int AS item_count, coalesce(sum(quantity), 0)::int AS total_quantity
            FROM order_items WHERE order_id = o.id
        ) i
-      WHERE $1::uuid IS NULL
-         OR (o.created_at, o.id) < (SELECT created_at, id FROM orders WHERE id = $1)
+       CROSS JOIN LATERAL (
+         SELECT coalesce(json_agg(x ORDER BY x.sku), '[]'::json) AS preview
+           FROM (SELECT p.sku, p.name, oi.quantity
+                   FROM order_items oi JOIN products p ON p.id = oi.product_id
+                  WHERE oi.order_id = o.id
+                  ORDER BY p.sku
+                  LIMIT $6) x
+       ) pv
+      WHERE ($1::uuid IS NULL
+             OR (o.created_at, o.id) < (SELECT created_at, id FROM orders WHERE id = $1))
+        AND ($3::text IS NULL OR o.status = $3)
+        AND ($4::text IS NULL
+             OR o.id::text LIKE $5 ESCAPE '\\'
+             OR EXISTS (SELECT 1 FROM order_items oi JOIN products p ON p.id = oi.product_id
+                         WHERE oi.order_id = o.id
+                           AND (p.sku ILIKE $4 ESCAPE '\\' OR p.name ILIKE $4 ESCAPE '\\')))
       ORDER BY o.created_at DESC, o.id DESC
       LIMIT $2`,
-    [params.after, params.limit + 1],
+    [
+      params.after,
+      params.limit + 1,
+      params.status ?? null,
+      query === null ? null : `%${escapeLike(query)}%`,
+      query === null ? null : `${escapeLike(query.toLowerCase())}%`,
+      ORDER_PREVIEW_ITEMS,
+    ],
   );
   const rows = result.rows.slice(0, params.limit);
   const hasMore = result.rows.length > params.limit;
@@ -591,6 +641,7 @@ export async function listOrders(
       totalCents: r.total_cents,
       itemCount: r.item_count,
       totalQuantity: r.total_quantity,
+      items: r.preview,
       failureReason: r.failure_reason,
       createdAt: r.created_at,
       updatedAt: r.updated_at,

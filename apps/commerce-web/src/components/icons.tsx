@@ -93,6 +93,18 @@ export const CardIcon = (p: P) => (
   </Icon>
 );
 
+export const CopyIcon = (p: P) => (
+  <Icon {...p}>
+    <rect x="7" y="7" width="9.5" height="9.5" rx="2" />
+    <path d="M13 7V5a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 4 5v6.5A1.5 1.5 0 0 0 5.5 13H7" />
+  </Icon>
+);
+export const SearchIcon = (p: P) => (
+  <Icon {...p}>
+    <circle cx="9" cy="9" r="5.5" />
+    <path d="m13.2 13.2 3.3 3.3" />
+  </Icon>
+);
 export function Spinner({ className = '' }: { className?: string }) {
   return (
     <svg
