@@ -29,6 +29,8 @@ export {
 export {
   createApiMetrics,
   createWorkerMetrics,
+  RECOVERED_STATUSES,
+  RELEASE_RESULTS,
   DURATION_BUCKETS_S,
   HTTP_METHODS,
   METER_NAME,
@@ -52,6 +54,7 @@ export {
   type RecoveredStatus,
   type ReleaseResultLabel,
   type WorkerMetrics,
+  type WorkerMetricsOptions,
 } from './metrics.js';
 export { packageVersion, registerTelemetry } from './register.js';
 export {

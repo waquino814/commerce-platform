@@ -51,7 +51,8 @@ export interface WorkerTelemetry {
  * sampler. With telemetry off the meter is a no-op and no pool or sampler exists.
  */
 export function startWorkerMetrics(deps: WorkerMetricsDeps): WorkerTelemetry {
-  const metrics = createWorkerMetrics(deps.meter);
+  // The claim counters start at 0, so a first recovery is an increase Prometheus can see.
+  const metrics = createWorkerMetrics(deps.meter, { zeroClaimCounters: true });
   let metricsPool: Pool | null = null;
   let sampler: OrderStatusSampler | null = null;
 

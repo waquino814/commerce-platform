@@ -167,8 +167,26 @@ export interface WorkerMetrics {
   claimsReleased(result: ReleaseResultLabel, count: number): void;
 }
 
+/** Every label value of the two claim counters (M3 catalog). */
+export const RECOVERED_STATUSES: readonly RecoveredStatus[] = ['pending', 'payment_unknown'];
+export const RELEASE_RESULTS: readonly ReleaseResultLabel[] = ['released', 'unconfirmed'];
+
+export interface WorkerMetricsOptions {
+  /**
+   * Adds 0 to every series of `commerce.claims.recovered` and `commerce.claims.released` when the
+   * recorders are created, so they are exported from startup instead of on first use. Prometheus's
+   * `increase()` only sees change between samples: a series whose first sample is already 1 shows
+   * no increase, so without a 0 baseline a single recovery is invisible to the M5 `poison-order`
+   * condition. The worker's startup path sets it; the default keeps the recorders as before.
+   */
+  zeroClaimCounters?: boolean;
+}
+
 /** See createApiMetrics for when to call it. */
-export function createWorkerMetrics(meter?: Meter): WorkerMetrics {
+export function createWorkerMetrics(
+  meter?: Meter,
+  options: WorkerMetricsOptions = {},
+): WorkerMetrics {
   const m = meterOf(meter);
   const passes = m.createCounter(METRIC.workerPasses, {
     description: 'Completed worker passes.',
@@ -192,6 +210,14 @@ export function createWorkerMetrics(meter?: Meter): WorkerMetrics {
     description: 'Claims released at shutdown, by result.',
     unit: '{order}',
   });
+  if (options.zeroClaimCounters) {
+    safely(METRIC.claimsRecovered, () => {
+      for (const status of RECOVERED_STATUSES) recovered.add(0, { 'order.status': status });
+    });
+    safely(METRIC.claimsReleased, () => {
+      for (const result of RELEASE_RESULTS) released.add(0, { 'release.result': result });
+    });
+  }
   return {
     passCompleted(type, outcome) {
       safely(METRIC.workerPasses, () => {
