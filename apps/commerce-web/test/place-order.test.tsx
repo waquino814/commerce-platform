@@ -27,16 +27,20 @@ describe('place an order', () => {
     fireEvent.change(quantity(), { target: { value: '2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add another item' }));
     fireEvent.change(sku(2), { target: { value: 'SKU-00007' } });
-    fireEvent.change(screen.getByLabelText('Payment method'), {
-      target: { value: 'pm_card_declined' },
-    });
+    const payment = screen.getByRole('group', { name: 'Payment method' });
+    expect(within(payment).getByRole<HTMLInputElement>('radio', { name: /approves/ }).checked).toBe(
+      true,
+    );
+    fireEvent.click(within(payment).getByRole('radio', { name: /declines/ }));
     submit();
 
     const placed = await screen.findByRole('heading', { name: 'Order placed' });
     expect(document.activeElement).toBe(placed);
     expect(screen.getByText(order().id)).toBeTruthy();
     expect(screen.getByText('Pending')).toBeTruthy();
-    expect(screen.getByText(/Total \$30\.85 for 2 item/)).toBeTruthy();
+    const summary = screen.getByRole('status').parentElement?.textContent ?? '';
+    expect(summary).toContain('Items2 product(s), 3 unit(s)');
+    expect(summary).toContain('Total$30.85');
     expect(screen.getByRole('link', { name: 'Track live status' }).getAttribute('href')).toBe(
       `/orders/${order().id}`,
     );
@@ -172,9 +176,10 @@ describe('catalog', () => {
     open();
     expect(screen.getByRole('status').textContent).toContain('Loading products');
     const list = await screen.findByRole('list', { name: 'Products' });
-    expect(within(list).getByText(/SKU-00042/).parentElement?.textContent).toContain(
-      '$10.42 · 50 in stock',
-    );
+    const card = within(list).getByText('Product 42').closest('li');
+    expect(card?.textContent).toContain('$10.42');
+    expect(card?.textContent).toContain('50 in stock');
+    expect(screen.getByText('2 products shown')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Add Product 42 (SKU-00042)' }));
     expect(sku().value).toBe('SKU-00042');
     fireEvent.click(screen.getByRole('button', { name: 'Add Product 42 (SKU-00042)' }));
@@ -188,8 +193,8 @@ describe('catalog', () => {
     expect(await screen.findByText('Product 43')).toBeTruthy();
     expect(screen.getAllByRole('listitem').length).toBeGreaterThanOrEqual(3);
     expect(calls.map((c) => c.url)).toEqual([
-      '/api/products?limit=8',
-      '/api/products?limit=8&after=SKU-00042',
+      '/api/products?limit=12',
+      '/api/products?limit=12&after=SKU-00042',
     ]);
   });
 
@@ -210,5 +215,71 @@ describe('catalog', () => {
     fail = false;
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Product 1')).toBeTruthy();
+  });
+
+  it('marks low and sold-out stock, and does not offer sold-out products', async () => {
+    stubFetch(() => ({
+      body: {
+        items: [product(1, { stockAvailable: 4 }), product(2, { stockAvailable: 0 })],
+        nextCursor: null,
+      },
+    }));
+    open();
+    const list = await screen.findByRole('list', { name: 'Products' });
+    expect(within(list).getAllByText('Only 4 left').length).toBeGreaterThan(0);
+    expect(within(list).getAllByText('Out of stock').length).toBeGreaterThan(0);
+    const soldOut = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Product 2 (SKU-00002) is out of stock',
+    });
+    expect(soldOut.disabled).toBe(true);
+    expect(soldOut.textContent).toBe('Sold out');
+  });
+});
+
+describe('order panel', () => {
+  it('steps quantities within 1 to 100 and shows line totals and the estimate from catalog prices', async () => {
+    stubFetch(() => ({ body: { items: [product(7), product(42)], nextCursor: null } }));
+    open();
+    await screen.findByRole('list', { name: 'Products' });
+    const estimate = () => screen.getByTestId('estimate').textContent;
+    expect(estimate()).toBe('—');
+    expect(screen.getByText('0 units')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Product 7 (SKU-00007)' }));
+    const decrease = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Decrease quantity, item 1',
+    });
+    const increase = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Increase quantity, item 1',
+    });
+    expect(decrease.disabled).toBe(true);
+    fireEvent.click(increase);
+    fireEvent.click(increase);
+    expect(quantity().value).toBe('3');
+    expect(decrease.disabled).toBe(false);
+    fireEvent.click(decrease);
+    expect(quantity().value).toBe('2');
+    expect(screen.getByText('Product 7 · $10.07 each')).toBeTruthy();
+    expect(estimate()).toBe('$20.14');
+    expect(screen.getByText('2 units')).toBeTruthy();
+    const card7 = within(screen.getByRole('list', { name: 'Products' }))
+      .getByText('Product 7')
+      .closest('li');
+    expect(card7?.textContent).toContain('2 in order');
+
+    fireEvent.change(quantity(), { target: { value: '100' } });
+    expect(increase.disabled).toBe(true);
+    fireEvent.click(increase);
+    expect(quantity().value).toBe('100');
+
+    // A typed SKU that is not in the shown catalog has no price, and the estimate says so.
+    fireEvent.click(screen.getByRole('button', { name: 'Add another item' }));
+    fireEvent.change(sku(2), { target: { value: 'SKU-99999' } });
+    expect(screen.getByText('Not shown in the catalog; the API will check it.')).toBeTruthy();
+    expect(screen.getByText(/Excludes 1 item\(s\) without a shown price/)).toBeTruthy();
+    expect(estimate()).toBe('$1,007.00');
+    expect(
+      screen.getByRole('link', { name: /Review order · 101 units/ }).getAttribute('href'),
+    ).toBe('#your-order');
   });
 });

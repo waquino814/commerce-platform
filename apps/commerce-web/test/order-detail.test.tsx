@@ -42,6 +42,27 @@ describe('order details', () => {
     expect(text).toContain('Processing attempts1');
     expect(text).toContain('Final status. Live updates have stopped.');
     expect(text).not.toContain('Next attempt');
+    const progress = screen.getByRole('list', { name: 'Order progress' });
+    expect(progress.textContent).toBe('Placed (done)Processed (done)Paid (done)');
+  });
+
+  it('shows the lifecycle step for each status', async () => {
+    const sequence: Reply[] = [
+      ok({ status: 'pending' }),
+      ok({ status: 'payment_unknown' }),
+      ok({ status: 'failed', failureReason: 'payment_declined' }),
+    ];
+    stubFetch(() => sequence.shift() ?? ok({ status: 'failed' }));
+    open();
+    const progress = () => screen.getByRole('list', { name: 'Order progress' });
+    await flush();
+    expect(progress().textContent).toBe('Placed (done)Processing (current)Paid (upcoming)');
+    expect(progress().querySelector('[aria-current="step"]')?.textContent).toContain('Processing');
+    await flush(2000);
+    expect(progress().textContent).toBe('Placed (done)Confirming payment (current)Paid (upcoming)');
+    await flush(2000);
+    expect(progress().textContent).toBe('Placed (done)Processed (done)Failed (failed)');
+    expect(document.body.textContent).toContain('2 products · 3 units');
   });
 
   it('polls while pending and processing, and stops when the order is paid', async () => {

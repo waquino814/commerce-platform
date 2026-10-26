@@ -35,7 +35,8 @@ describe('order history', () => {
       'Paid',
     ]);
     expect(rows[1]?.textContent).toContain('The payment method was declined.');
-    expect(rows[0]?.textContent).toContain('3 unit(s) of 2 product(s) · $20.01');
+    expect(rows[0]?.textContent).toContain('2 products · 3 units');
+    expect(rows[0]?.textContent).toContain('$20.01');
     expect(rows[0]?.textContent).toContain('2026-10-25 12:00:00 UTC');
     expect(
       within(list)

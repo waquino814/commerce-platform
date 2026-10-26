@@ -48,4 +48,11 @@ export const PAYMENT_TEXT: Record<PaymentMethod, string> = {
   pm_card_unavailable: 'Test card · provider unavailable',
 };
 
+/** What the local payment simulator does with each test card (README, "Payment methods"). */
+export const PAYMENT_DETAIL: Record<PaymentMethod, string> = {
+  pm_card_ok: 'The charge is approved and the order is paid.',
+  pm_card_declined: 'The charge is declined and the order fails.',
+  pm_card_unavailable: 'The provider does not answer; retried, then the order fails.',
+};
+
 export const shortId = (id: string) => id.slice(0, 8);
