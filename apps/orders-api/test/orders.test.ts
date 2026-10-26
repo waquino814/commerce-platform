@@ -202,4 +202,67 @@ describe('orders API', () => {
       expect(missing.json()).toMatchObject({ error: 'order_not_found' });
     });
   });
+
+  describe('order history (M7)', () => {
+    const list = (query = '') => app.inject({ method: 'GET', url: `/orders${query}` });
+
+    it('is empty with no orders', async () => {
+      const res = await list();
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ items: [], nextCursor: null });
+    });
+
+    it('lists orders newest first with item counts, and pages with a cursor', async () => {
+      const ids: string[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        ids.push((await post(validBody)).json<{ id: string }>().id);
+      }
+      // Fix the creation times so the order is deterministic, including a tie broken by ID.
+      await pool.query(
+        `UPDATE orders SET created_at = CASE id
+           WHEN $1::uuid THEN '2026-10-25T10:00:00Z'::timestamptz
+           ELSE '2026-10-25T11:00:00Z'::timestamptz END`,
+        [ids[0]],
+      );
+      const newer = [ids[1], ids[2]].map(String).sort().reverse();
+
+      const first = await list('?limit=2');
+      expect(first.statusCode).toBe(200);
+      const page = first.json<{ items: Record<string, unknown>[]; nextCursor: string | null }>();
+      expect(page.items.map((o) => o.id)).toEqual(newer);
+      expect(page.nextCursor).toBe(newer[1]);
+      expect(page.items[0]).toEqual({
+        id: newer[0],
+        status: 'pending',
+        currency: 'USD',
+        totalCents: 2 * p42.priceCents + p7.priceCents,
+        itemCount: 2,
+        totalQuantity: 3,
+        failureReason: null,
+        createdAt: '2026-10-25T11:00:00.000Z',
+        updatedAt: expect.any(String) as unknown,
+      });
+
+      const second = await list(`?limit=2&after=${String(page.nextCursor)}`);
+      expect(second.json()).toMatchObject({ items: [{ id: ids[0] }], nextCursor: null });
+    });
+
+    it('defaults to 20 and validates the query', async () => {
+      for (let i = 0; i < 21; i += 1) await post(validBody);
+      const page = (await list()).json<{ items: unknown[]; nextCursor: string | null }>();
+      expect(page.items).toHaveLength(20);
+      expect(page.nextCursor).not.toBeNull();
+      for (const q of ['?limit=0', '?limit=101', '?after=nope', '?status=paid']) {
+        const res = await list(q);
+        expect(res.statusCode, q).toBe(400);
+        expect(res.json(), q).toMatchObject({ error: 'validation_error' });
+      }
+      const unknown = await list('?after=00000000-0000-4000-8000-000000000000');
+      expect(unknown.statusCode).toBe(400);
+      expect(unknown.json()).toEqual({
+        error: 'invalid_cursor',
+        message: 'the cursor names no order',
+      });
+    });
+  });
 });

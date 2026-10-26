@@ -48,6 +48,8 @@ export default defineConfig({
       'packages/*/test/**/*.test.ts',
       // M7: the dashboard client, rendered in jsdom (each file opts in with a pragma).
       'apps/web/client/test/**/*.test.{ts,tsx}',
+      // M7: the Commerce UI, also rendered in jsdom.
+      'apps/commerce-web/test/**/*.test.tsx',
     ],
     globalSetup: ['./vitest.global-setup.ts'],
     // Integration tests share one database, so files run one at a time.
@@ -88,6 +90,7 @@ export default defineConfig({
         // M7: the read-only incident dashboard, server and client.
         'apps/web/src/**/*.ts',
         'apps/web/client/src/**/*.{ts,tsx}',
+        'apps/commerce-web/src/**/*.{ts,tsx}',
       ],
       exclude: [
         'packages/telemetry/src/register.ts',
@@ -100,6 +103,7 @@ export default defineConfig({
         'apps/incident/src/main.ts',
         'apps/web/src/main.ts',
         'apps/web/client/src/main.tsx',
+        'apps/commerce-web/src/main.tsx',
       ],
       reporter: ['text', 'json-summary'],
       thresholds: { lines: 80, perFile: true },

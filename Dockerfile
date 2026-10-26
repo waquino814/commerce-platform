@@ -11,6 +11,7 @@ COPY apps/worker/package.json apps/worker/
 COPY apps/loadgen/package.json apps/loadgen/
 COPY apps/incident/package.json apps/incident/
 COPY apps/web/package.json apps/web/
+COPY apps/commerce-web/package.json apps/commerce-web/
 COPY packages/db/package.json packages/db/
 COPY packages/telemetry/package.json packages/telemetry/
 COPY packages/incident-bundle/package.json packages/incident-bundle/
@@ -28,6 +29,7 @@ COPY apps/worker apps/worker
 COPY apps/loadgen apps/loadgen
 COPY apps/incident apps/incident
 COPY apps/web apps/web
+COPY apps/commerce-web apps/commerce-web
 RUN pnpm build
 
 FROM base AS prod-deps

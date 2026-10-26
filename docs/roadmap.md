@@ -122,6 +122,8 @@ Starts after the observability and incidents phase, M3 to M5, is complete. See "
 
 The repository owner started a first slice early, on 2026-10-26, before M5 closes: `apps/web`, a read-only incident dashboard served on `127.0.0.1` (`pnpm web`). The owner chose its stack: React and TypeScript, built with Vite and styled with Tailwind CSS, served with its read-only JSON API by a small Fastify server (overview, incident detail with captured telemetry, and live system health). It adds frontend dev dependencies only to `apps/web`, and the orders API, worker and incident engine are unchanged. This deviates from ADR 0004, which says the Engineering Operations AI UI comes first and no frontend code exists before M7, and from the start condition above; both stand until the owner revises them.
 
+The Commerce UI followed, also by the owner's decision and before M5 closes: `apps/commerce-web` (React, TypeScript, Vite, Tailwind CSS), separate from the dashboard in `apps/web`, which keeps the incident dashboard. It places orders, lists order history through the new `GET /orders`, and polls an order's status until it is `paid` or `failed`. It runs with Vite's dev or preview server on the host, not yet through Docker Compose, and it does not list or start demo scenarios. Open against the criteria below: Compose hosting, scenario controls, and an end-to-end test against the running stack.
+
 - `apps/web` is a React app that runs locally through Docker Compose, with no cloud services.
 - Users can place an order, see order history, and watch an order's status change until it is `paid` or `failed`.
 - Users can list and start predefined demo scenarios through the M5 scenario endpoints, which are enabled only in demo mode.

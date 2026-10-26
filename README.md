@@ -29,6 +29,7 @@ See [docs/roadmap.md](docs/roadmap.md) for milestone boundaries and acceptance c
 - **Orders API** (`apps/orders-api`, port 3000):
   - `GET /products`, with cursor pagination by SKU;
   - `POST /orders`, with optional `Idempotency-Key` support;
+  - `GET /orders`, the order history: all orders newest first, without items, with cursor pagination (M7);
   - `GET /orders/:id`;
   - `GET /healthz` and `GET /readyz`.
 - **Order worker** (`apps/worker`, health on port 3001):
@@ -104,6 +105,9 @@ pnpm dev
 | `pnpm web`                          | M7, first slice: a read-only incident dashboard at `http://127.0.0.1:3100`.                    |
 | `pnpm web:dev`                      | The dashboard client with hot reload at `http://127.0.0.1:5173`; needs `pnpm web` running.     |
 | `pnpm web:build`                    | Build only the dashboard client into `apps/web/dist/client` (`pnpm build` includes it).        |
+| `pnpm commerce:dev`                 | M7: the Commerce UI with hot reload at `http://127.0.0.1:5174`, proxying `/api` to the API.    |
+| `pnpm commerce:build`               | Build only the Commerce UI into `apps/commerce-web/dist` (`pnpm build` includes it).           |
+| `pnpm commerce:preview`             | Serve the built Commerce UI at `http://127.0.0.1:4174`, with the same `/api` proxy.            |
 
 `pnpm e2e:jaeger` needs the Compose stack running with telemetry (`docker compose up -d --build --wait`) and `DATABASE_URL` pointing at its Postgres, as the default `.env` does. It places one order and exits 1 with diagnostics if the traces are missing or unlinked. It is not part of CI.
 
@@ -132,12 +136,24 @@ For client development, run `pnpm web` (the API) and `pnpm web:dev` side by side
 
 Worker settings, such as concurrency, timeouts, retry limits, and backoff, are documented in `.env.example`. The worker refuses to start with an unsafe combination, for example a claim timeout shorter than 1.5 times its processing budget.
 
+### Commerce UI
+
+`apps/commerce-web` is the customer-facing UI (React, TypeScript, Vite, Tailwind CSS), separate from the incident dashboard. It places orders (SKU, quantity and a test payment method, from typed SKUs or the real catalog), lists the order history, and shows an order's items, totals, timestamps and status, polling `GET /orders/:id` every 2 seconds until the order is `paid` or `failed`. It is a static client: it has no fault or scenario controls and reads nothing but the orders API.
+
+```sh
+docker compose up -d --wait   # or any orders API on ORDERS_API_URL
+pnpm commerce:dev             # http://127.0.0.1:5174
+```
+
+The browser calls same-origin `/api/*`; the Vite dev and preview servers proxy it to `ORDERS_API_URL` (default `http://127.0.0.1:3000`), stripping the `/api` prefix, so the API needs no CORS. To use another base URL, set `VITE_API_BASE_URL` when building (the API then needs to allow that origin). Both read the repository's `.env`. `pnpm build && pnpm commerce:preview` serves the production build at `http://127.0.0.1:4174`. Orders placed through the UI are real orders: they use stock that `pnpm db:seed` never restores. The order history needs an orders API built from this version, since `GET /orders` is new in M7. Its tests run with `pnpm test`, in jsdom against a stubbed `fetch`.
+
 ## Layout
 
 ```
 apps/orders-api      HTTP API: routes, validation, pricing
 apps/worker          slot-based loop, processor, payment simulator, shutdown
 apps/web             read-only incident dashboard: Fastify JSON API and React client
+apps/commerce-web    Commerce UI: place orders, order history, live order status (static React client)
 packages/db          migrations, seed, and all order data access
 infra/postgres/init  creates the commerce_test database on first start
 docs/                architecture, roadmap, ADRs, design and prompts

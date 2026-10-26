@@ -530,6 +530,75 @@ export async function getOrder(db: Queryable, orderId: string): Promise<OrderVie
   };
 }
 
+/** One row of the order history: the order without its items, with item counts. */
+export interface OrderSummaryView {
+  id: string;
+  status: OrderStatus;
+  currency: string;
+  totalCents: number;
+  /** Distinct SKUs in the order. */
+  itemCount: number;
+  /** Units across all items. */
+  totalQuantity: number;
+  failureReason: FailureReason | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Keyset pagination over all orders, newest first, ordered by (created_at, id). The cursor is the
+ * last order's ID. Returns null when the cursor names no order, so the caller can reject it.
+ */
+export async function listOrders(
+  db: Queryable,
+  params: { limit: number; after: string | null },
+): Promise<{ items: OrderSummaryView[]; nextCursor: string | null } | null> {
+  if (params.after !== null) {
+    const cursor = await db.query('SELECT 1 FROM orders WHERE id = $1', [params.after]);
+    if (cursor.rowCount === 0) return null;
+  }
+  const result = await db.query<{
+    id: string;
+    status: OrderStatus;
+    currency: string;
+    total_cents: number;
+    item_count: number;
+    total_quantity: number;
+    failure_reason: FailureReason | null;
+    created_at: Date;
+    updated_at: Date;
+  }>(
+    `SELECT o.id, o.status, o.currency, o.total_cents, o.failure_reason, o.created_at,
+            o.updated_at, i.item_count, i.total_quantity
+       FROM orders o
+       CROSS JOIN LATERAL (
+         SELECT count(*)::int AS item_count, coalesce(sum(quantity), 0)::int AS total_quantity
+           FROM order_items WHERE order_id = o.id
+       ) i
+      WHERE $1::uuid IS NULL
+         OR (o.created_at, o.id) < (SELECT created_at, id FROM orders WHERE id = $1)
+      ORDER BY o.created_at DESC, o.id DESC
+      LIMIT $2`,
+    [params.after, params.limit + 1],
+  );
+  const rows = result.rows.slice(0, params.limit);
+  const hasMore = result.rows.length > params.limit;
+  return {
+    items: rows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      currency: r.currency,
+      totalCents: r.total_cents,
+      itemCount: r.item_count,
+      totalQuantity: r.total_quantity,
+      failureReason: r.failure_reason,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    })),
+    nextCursor: hasMore ? (rows.at(-1)?.id ?? null) : null,
+  };
+}
+
 export interface PricedProduct {
   id: string;
   sku: string;

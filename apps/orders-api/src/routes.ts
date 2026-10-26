@@ -1,5 +1,12 @@
 import { createHash } from 'node:crypto';
-import { createOrder, getOrder, listProducts, type OrderView, type Pool } from '@commerce/db';
+import {
+  createOrder,
+  getOrder,
+  listOrders,
+  listProducts,
+  type OrderView,
+  type Pool,
+} from '@commerce/db';
 import { annotateActiveSpan, currentTraceparent, withSpan } from '@commerce/telemetry';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -31,6 +38,11 @@ export const idempotencyKeySchema = z
   .regex(/^[\x21-\x7E]{1,128}$/, 'must be 1 to 128 visible ASCII characters');
 
 const orderParams = z.strictObject({ id: z.uuid() });
+
+export const listOrdersQuery = z.strictObject({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  after: z.uuid().optional(),
+});
 
 /** JSON response shape: timestamps as ISO 8601 strings, money as integer cents. */
 export function orderResponse(order: OrderView): Record<string, unknown> {
@@ -118,6 +130,26 @@ export function registerCommerceRoutes(app: FastifyInstance, deps: { pool: Pool 
           .header('Location', `/orders/${result.order.id}`)
           .send(orderResponse(result.order));
     }
+  });
+
+  // M7 order history: every order, newest first, without items. The API has no customer identity,
+  // so this lists all orders (ADR 0004 names this gap). Read-only.
+  app.get('/orders', async (request, reply) => {
+    const query = listOrdersQuery.safeParse(request.query);
+    if (!query.success) return sendValidationError(reply, query.error);
+    const page = await listOrders(deps.pool, {
+      limit: query.data.limit,
+      after: query.data.after ?? null,
+    });
+    if (!page) return sendError(reply, 400, 'invalid_cursor', 'the cursor names no order');
+    return {
+      items: page.items.map((o) => ({
+        ...o,
+        createdAt: o.createdAt.toISOString(),
+        updatedAt: o.updatedAt.toISOString(),
+      })),
+      nextCursor: page.nextCursor,
+    };
   });
 
   app.get('/orders/:id', async (request, reply) => {

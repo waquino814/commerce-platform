@@ -11,5 +11,7 @@
     "packages/*/test/**/*.ts",
     "vitest.config.ts",
     "vitest.global-setup.ts"
-  ]
+  ],
+  // The Commerce UI's tests are browser code, typechecked with apps/commerce-web/tsconfig.json.
+  "exclude": ["apps/commerce-web/**"]
 }

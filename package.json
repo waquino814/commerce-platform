@@ -7,12 +7,12 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "build": "tsc -b && pnpm --filter ./apps/web exec vite build",
+    "build": "tsc -b && pnpm --filter ./apps/web exec vite build && pnpm --filter ./apps/commerce-web exec vite build",
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
     "lint": "tsc -b && eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc -b && tsc -p tsconfig.test.json && tsc -p apps/web/tsconfig.client.json",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json && tsc -p apps/web/tsconfig.client.json && tsc -p apps/commerce-web/tsconfig.json",
     "test": "vitest run",
     "db:migrate": "node --env-file-if-exists=.env packages/db/dist/cli/migrate.js",
     "db:seed": "node --env-file-if-exists=.env packages/db/dist/cli/seed.js",
@@ -24,7 +24,10 @@
     "incident": "node --env-file-if-exists=.env apps/incident/dist/main.js",
     "web": "node --env-file-if-exists=.env apps/web/dist/main.js",
     "web:dev": "pnpm --filter ./apps/web exec vite",
-    "web:build": "pnpm --filter ./apps/web exec vite build"
+    "web:build": "pnpm --filter ./apps/web exec vite build",
+    "commerce:dev": "pnpm --filter ./apps/commerce-web exec vite",
+    "commerce:build": "pnpm --filter ./apps/commerce-web exec vite build",
+    "commerce:preview": "pnpm --filter ./apps/commerce-web exec vite preview"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
