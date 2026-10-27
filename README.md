@@ -1,78 +1,87 @@
 # Commerce Platform
 
-A small, observable, local-first e-commerce backend built to generate realistic, reproducible operational incidents.
+A small, observable, local-first e-commerce backend built to generate realistic, reproducible operational incidents, with two web UIs: a customer storefront and a read-only incident dashboard.
 
-It is the first of two repositories in an AI engineering portfolio. The second, the **Engineering Operations AI Agent**, consumes the telemetry and incident bundles produced here to practice detection, diagnosis, and remediation. This repository contains no AI code.
+It is the first of two repositories in an AI engineering portfolio. The second, [Engineering Operations AI](https://github.com/waquino814/engineering-operations-ai), consumes the incident bundles produced here to practise detection, diagnosis and remediation. **This repository contains no AI code, makes no LLM or cloud calls, and needs no accounts or API keys.** The only contract between the two is the incident bundle ([handoff](docs/incidents-and-handoff.md)).
+
+![The incident dashboard showing a provider-outage run: ground truth, the primary-symptom series with fault and detection markers, traces, logs and validation](docs/images/dashboard-02-incident-provider-outage.png)
+
+## What problem it solves
+
+Testing an incident-investigation system needs incidents with known causes. This project runs a believable order workload (API, background worker, PostgreSQL, a payment simulator), injects a named fault with a seed, exports the traces, metrics and logs an on-call engineer would see, and writes the **ground truth** of what actually broke next to them. Everything is deterministic for a scenario name plus a seed, and every fault is inert unless explicitly enabled.
 
 ## Status
 
-- **M0, Foundation, and M1, Skeleton, schema, and health:** done.
-- **M2, Working commerce flow:** done. All 36 acceptance criteria pass, and GitHub Actions is green for the M2 commit.
-- **M3a, Telemetry foundation:** done. All six M3a criteria pass, and GitHub Actions is green for commit `9a73939`.
-  - With Compose, the apps send traces through an OpenTelemetry Collector to Jaeger at http://localhost:16686, and Prometheus runs at http://localhost:9090.
-  - JSON logs carry `trace_id` and `span_id` inside a request.
-- **M3b, Order trace correlation:** done. Implemented in commit `78f0793`. GitHub Actions is green for commit `8a0a941`, which includes it, as confirmed by the repository owner.
-  - Every worker pass is its own trace, linked to the order's creation trace.
-  - Searching Jaeger by `order.id` finds the creation trace and every pass trace.
-- **M3c, Metrics:** done. GitHub Actions is green for commit `8a0a941`, as confirmed by the repository owner. The live Compose checks for criteria 15 and 16 last ran before a final hardening pass, which changed only error reporting, a default constant and tests, and have not been rerun.
-  - Request, connection-pool, order-status, worker-pass, payment and claim metrics reach Prometheus through the collector.
-  - Labels come from closed sets. Order ids, SKUs, raw URLs and payment references are never labels.
-- **M4, Load generation:** done. Implemented in commit `5f6f6eb`, and GitHub Actions is green for it, as confirmed by the repository owner. All 12 acceptance criteria pass. The local performance check, criterion 11, passed on its first run: 55.00 rps with a load-generator p95 of 8.2 ms and no failures. The full results are in [docs/roadmap.md](docs/roadmap.md).
-  - `pnpm loadgen` runs seeded, deterministic traffic against the orders API. The same profile and seed always produce the same request plan and plan hash.
-- **M5, Fault scenarios and incident bundles:** M5a committed in `d1579ec`; CI confirmed by the repository owner on 2026-10-25. M5b, the bundle schema, validator, writer, capture clients and `incident` load profile, is committed; CI confirmed by the repository owner on 2026-10-25. M5c, the incident CLI and its orchestration, is committed; CI confirmed by the repository owner on 2026-10-25. Its runtime isolation checks pass against the local stack, and no live run has been made. See [docs/prompts/m5-design.md](docs/prompts/m5-design.md) and [docs/prompts/m5c-design.md](docs/prompts/m5c-design.md).
-- **M6 and later:** not started. Portfolio polish and the UI are still to come.
+[docs/roadmap.md](docs/roadmap.md) is the source of truth. Summary (2026-10-27):
 
-See [docs/roadmap.md](docs/roadmap.md) for milestone boundaries and acceptance criteria.
+| Milestone                                                                          | State                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M0 Foundation, M1 Skeleton, M2 Commerce flow, M3 Observability, M4 Load generation | Done. CI green for their commits, as confirmed by the repository owner.                                                                                                                                                                                                                                                                                                                                                                  |
+| M5 Fault scenarios and incident bundles                                            | **Open.** M5a to M5c (scenarios, bundle schema, validator and writer, incident CLI) are committed with CI confirmed by the owner. Its live criteria (C3 to C5) need owner-approved live runs. Per the roadmap, four scenarios have passed C3; `provider-outage`, the C4 reruns and direct C5 evidence for `payment-timeouts` and `api-pool-exhaustion` remain. See [docs/prompts/m5c-design.md](docs/prompts/m5c-design.md), section 14. |
+| M6 Portfolio polish                                                                | Not started (this README, the screenshots and docs index are documentation groundwork, not M6's acceptance criteria).                                                                                                                                                                                                                                                                                                                    |
+| M7 Commerce UI                                                                     | **Started early, by the owner's decision:** a read-only incident dashboard (`apps/web`) and the storefront (`apps/commerce-web`). Open: Compose hosting, scenario controls, an end-to-end test against the running stack.                                                                                                                                                                                                                |
 
-## What exists today
+Known limitations: the UIs run on the host, not through Compose; the storefront has no fault or scenario controls and the dashboard cannot start runs; there is no customer identity, so the order history lists every order; the default Compose file publishes service ports on all interfaces (see [Ports](#ports)).
 
-- **Orders API** (`apps/orders-api`, port 3000):
-  - `GET /products`, with cursor pagination by SKU;
-  - `POST /orders`, with optional `Idempotency-Key` support;
-  - `GET /orders`, the order history (M7): all orders newest first, each with its first three items, with cursor pagination, an optional `status` filter, and `q` to search by order-ID prefix, SKU or product name;
-  - `GET /orders/:id`;
-  - `GET /healthz` and `GET /readyz`.
-- **Order worker** (`apps/worker`, health on port 3001):
-  - claims orders only for free processing slots;
-  - reserves stock and charges through the in-process payment simulator;
-  - retries unknown outcomes, reconciles with a lookup that can void, and parks unresolved orders in `payment_unknown`;
-  - shuts down without unsafe writes.
-- **Database package** (`packages/db`): migrations, the deterministic seed catalog of 1,000 products, and all order SQL. The transition trigger and constraints enforce the order lifecycle.
-- **Docker Compose:** Postgres 16, one-shot `migrate` and `seed` services, and both apps with health checks.
-- **CI:** GitHub Actions runs format check, lint, typecheck, migrations, seed, and the test suite with its coverage gate.
+## Main capabilities
 
-The lifecycle, processing protocol, and API contracts are specified in [docs/prompts/m2-design.md](docs/prompts/m2-design.md) and summarized in [ADR 0005](docs/decisions/0005-order-processing-protocol.md).
+- **Orders API** (`apps/orders-api`, port 3000): `GET /products`, `POST /orders` with optional `Idempotency-Key`, `GET /orders` (history, cursor pagination, `status` filter, `q` search), `GET /orders/:id`, `GET /healthz`, `GET /readyz`.
+- **Order worker** (`apps/worker`, health on 3001): claims orders only for free slots, reserves stock, charges through an in-process payment simulator, retries unknown outcomes, reconciles with a lookup that can void, and parks unresolved orders in `payment_unknown`.
+- **Telemetry:** OpenTelemetry traces and metrics through a collector to Jaeger and Prometheus; JSON logs carrying `trace_id`.
+- **Load generation** (`pnpm loadgen`): seeded, deterministic traffic profiles.
+- **Fault scenarios and incident bundles** (`pnpm incident`): five scenarios, each reproducible from a name plus a seed, written as validated bundles with ground truth.
+- **Storefront** (`apps/commerce-web`): catalog, product search, order form, order history, live order status.
+- **Incident dashboard** (`apps/web`): lists incident bundles and shows ground truth, primary-symptom series, traces, logs and component health. Read-only.
 
-## Planned
+## Screenshots
 
-- **M5:** seeded fault scenarios that produce incident bundles with ground truth.
-- **M7:** a React UI, planned after M5 and before the separate Engineering Operations AI repository is started, as proposed in [ADR 0008](docs/decisions/0008-project-order.md).
+Captured from the running stack on 2026-10-27. The incident runs, orders and stock figures are real local data from earlier runs; nothing was fabricated. Every route and state is listed in [docs/ui-visual-qa.md](docs/ui-visual-qa.md).
 
-## Requirements
+|                                                                                                                                                                                                                                 |                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![Storefront: catalog of 12 products with stock, and the order form with test payment methods](docs/images/storefront-01-shop.png)<br>**Storefront.** Catalog, cart and the three simulated payment outcomes.                   | ![Storefront order history listing orders newest first with status filters](docs/images/storefront-04-orders.png)<br>**Order history.** Search and status filters over every order. |
+| ![A paid order with a progress tracker, items and details](docs/images/storefront-06-order-paid.png)<br>**Order detail.** Status, items, timestamps; polls until `paid` or `failed`.                                            | ![A failed order: payment declined](docs/images/storefront-07-order-payment-declined.png)<br>**Failed order.** The failure reason is stated plainly.                                |
+| ![Incident dashboard overview listing eight runs with scenario, seed, detection and validation](docs/images/dashboard-01-incidents.png)<br>**Incidents.** Eight local runs across five scenarios, including one "not detected". | ![System health: orders API, worker, Prometheus and Jaeger readiness](docs/images/dashboard-08-health.png)<br>**System health.** Each component's own readiness endpoint, live.     |
 
-- Node.js 24 and pnpm 12
-- Docker with Docker Compose v2
+More: [incident detail per scenario](docs/images/dashboard-04-incident-payment-timeouts.png), [empty dashboard](docs/images/dashboard-09-incidents-empty.png), [health with components down](docs/images/dashboard-10-health-unreachable.png), [order rejected by the API](docs/images/storefront-03-order-validation.png), and mobile captures such as [the storefront](docs/images/storefront-mobile-shop.png).
 
-No cloud accounts, API keys, or LLMs are required.
+## Technology
 
-## Quick start
+TypeScript 6.0 (strict) on Node.js 24, pnpm 12 workspaces; Fastify and Zod; PostgreSQL 16 with plain forward-only SQL migrations; OpenTelemetry, Jaeger, Prometheus; React, Vite and Tailwind CSS for both UIs; ESLint, Prettier and Vitest ([engineering rules](CLAUDE.md), [ADR 0001](docs/decisions/0001-local-first-architecture.md)).
+
+## Prerequisites
+
+| Tool                   | Version                                    | Verified with |
+| ---------------------- | ------------------------------------------ | ------------- |
+| Node.js                | `>=24 <25` (`.nvmrc` is `24`)              | v24.20.0      |
+| pnpm                   | `12.15.0` (`packageManager`; use Corepack) | 12.15.0       |
+| Docker with Compose v2 | any recent                                 | Docker 29.7.2 |
+
+No cloud account, API key or LLM is needed.
+
+## Install and start
 
 ```sh
-cp .env.example .env
-pnpm install
-docker compose up -d --build --wait
+corepack enable
+cp .env.example .env                  # local development values; never commit .env
+pnpm install --frozen-lockfile
+docker compose up -d --build --wait   # postgres, migrate, seed, orders-api, worker, collector, jaeger, prometheus
+```
 
+`--wait` returns when every service is healthy. The one-shot `migrate` and `seed` services apply the SQL migrations and insert the deterministic 1,000-product catalog before the apps start. Check it:
+
+```sh
 curl 'localhost:3000/products?limit=3'
 curl -i -X POST localhost:3000/orders -H 'content-type: application/json' \
   -d '{"items":[{"sku":"SKU-00042","quantity":2}],"paymentMethod":"pm_card_ok"}'
 curl localhost:3000/orders/<id from the Location header>
 ```
 
-The `paymentMethod` field chooses the simulated outcome:
+That `POST` creates a real order on your local database and uses stock. The `paymentMethod` field chooses the simulated outcome:
 
-- `pm_card_ok` is approved, and the order is `paid` within about a second.
-- `pm_card_declined` fails the order with `payment_declined`.
-- `pm_card_unavailable` is retried 3 times, then voided, so the order fails with `max_attempts_exceeded`.
+- `pm_card_ok`: approved; the order is `paid` within about a second.
+- `pm_card_declined`: the order fails with `payment_declined`.
+- `pm_card_unavailable`: retried 3 times, then voided; fails with `max_attempts_exceeded`.
 
 Every 100th SKU has a stock of 3, so `out_of_stock` is easy to trigger.
 
@@ -81,88 +90,121 @@ To run the apps on the host against the Compose database instead:
 ```sh
 docker compose up -d --wait postgres
 pnpm build && pnpm db:migrate && pnpm db:seed
-pnpm dev
+pnpm dev                              # both apps in watch mode
 ```
+
+### Start the two UIs
+
+Both run on the host, not in Compose, and need `pnpm build` first for the production variants.
+
+```sh
+pnpm build                  # compiles everything and builds both UI clients
+pnpm web                    # incident dashboard: http://127.0.0.1:3100
+pnpm commerce:preview       # storefront (production build): http://127.0.0.1:4174
+# or, with hot reload:
+pnpm commerce:dev           # storefront: http://127.0.0.1:5174
+pnpm web:dev                # dashboard client: http://127.0.0.1:5173 (needs `pnpm web` running)
+```
+
+The storefront calls same-origin `/api/*`; the Vite dev and preview servers proxy it to `ORDERS_API_URL` (default `http://127.0.0.1:3000`). It needs the orders API running. The dashboard works without the stack: incident views read bundles from `INCIDENTS_DIR`, and the health view reports each component as unreachable.
+
+### Environment
+
+`.env.example` documents every setting with safe local values (the Postgres credentials are development-only: `commerce` / `commerce`). Main ones:
+
+| Variable                                                                                           | Default                                                                        | Meaning                                                                                                   |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`, `TEST_DATABASE_URL`                                                                | `postgres://commerce:commerce@localhost:5432/commerce` and `.../commerce_test` | Runtime and test databases.                                                                               |
+| `POSTGRES_PORT`                                                                                    | `5432`                                                                         | Host port for Compose Postgres.                                                                           |
+| `PORT`, `HEALTH_PORT`                                                                              | `3000`, `3001`                                                                 | Orders API and worker health ports.                                                                       |
+| `FAULTS_ENABLED`                                                                                   | `false`                                                                        | Only makes the scenario control endpoints exist; a scenario still needs an explicit start.                |
+| `WORKER_CONCURRENCY`, `CLAIM_TIMEOUT_MS`, `MAX_CHARGE_ATTEMPTS`, retry settings                    | see file                                                                       | The worker refuses an unsafe combination, such as a claim timeout under 1.5 times its processing budget.  |
+| `OTEL_*`                                                                                           | see file                                                                       | Telemetry export; off unless an OTLP endpoint is configured.                                              |
+| `WEB_PORT`, `INCIDENTS_DIR`, `ORDERS_API_URL`, `WORKER_HEALTH_URL`, `PROMETHEUS_URL`, `JAEGER_URL` | `3100`, `incidents`, loopback URLs                                             | Dashboard settings (commented in `.env.example`); upstream URLs must be `http` on `127.0.0.1` or `[::1]`. |
+| `VITE_API_BASE_URL`                                                                                | unset                                                                          | Build-time storefront API base URL; the API would then need to allow that origin.                         |
+
+### Ports
+
+| Port         | Service                                      | Notes                      |
+| ------------ | -------------------------------------------- | -------------------------- |
+| 3000         | Orders API                                   |                            |
+| 3001         | Worker health                                | `/healthz`, `/readyz` only |
+| 5432         | PostgreSQL 16                                | `POSTGRES_PORT`            |
+| 4318, 13133  | OTLP collector (HTTP), collector health      |                            |
+| 16686, 13134 | Jaeger UI, Jaeger health                     |                            |
+| 9090         | Prometheus                                   |                            |
+| 3100         | Incident dashboard (`pnpm web`)              | binds `127.0.0.1` only     |
+| 5173         | Dashboard client dev server (`pnpm web:dev`) |                            |
+| 5174, 4174   | Storefront dev and preview servers           | `127.0.0.1`                |
+
+**Exposure.** `compose.yaml` publishes the Compose service ports on all interfaces, including Postgres with the development password. `compose.faults.yaml`, the override used for incident runs, binds the API, worker, Jaeger and Prometheus to `127.0.0.1` (Postgres and the collector are not rebound). On a shared or untrusted network, do not run the default file as is.
 
 ## Commands
 
-| Command                             | Purpose                                                                                        |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `pnpm build`                        | Compile all workspace projects with TypeScript project references.                             |
-| `pnpm dev`                          | Run both apps in watch mode against workspace source.                                          |
-| `pnpm lint`                         | Build types, then run type-aware ESLint.                                                       |
-| `pnpm typecheck`                    | Type-check source and tests.                                                                   |
-| `pnpm format` / `pnpm format:check` | Apply or check Prettier formatting.                                                            |
-| `pnpm db:migrate`                   | Apply pending migrations to `DATABASE_URL`.                                                    |
-| `pnpm db:seed`                      | Insert the 1,000-product catalog. Existing SKUs are never changed.                             |
-| `pnpm test`                         | Run unit and integration tests. Requires Postgres and `TEST_DATABASE_URL`.                     |
-| `pnpm test:coverage`                | Run the tests with the per-module 80% line coverage gate, as CI does.                          |
-| `pnpm test:smoke`                   | Run the telemetry smoke tests under the production `--import` preload.                         |
-| `pnpm e2e:jaeger`                   | Local only: check that an order's creation and pass traces are findable and linked in Jaeger.  |
-| `pnpm e2e:prometheus`               | Local only: check that the metric catalog reaches Prometheus with the expected labels.         |
-| `pnpm loadgen`                      | Run a seeded load profile against the orders API, or print its plan hash with `--dry-run`.     |
-| `pnpm incident`                     | M5c: list scenarios, print a ground truth, validate a bundle, check readiness, run a scenario. |
-| `pnpm web`                          | M7, first slice: a read-only incident dashboard at `http://127.0.0.1:3100`.                    |
-| `pnpm web:dev`                      | The dashboard client with hot reload at `http://127.0.0.1:5173`; needs `pnpm web` running.     |
-| `pnpm web:build`                    | Build only the dashboard client into `apps/web/dist/client` (`pnpm build` includes it).        |
-| `pnpm commerce:dev`                 | M7: the Commerce UI with hot reload at `http://127.0.0.1:5174`, proxying `/api` to the API.    |
-| `pnpm commerce:build`               | Build only the Commerce UI into `apps/commerce-web/dist` (`pnpm build` includes it).           |
-| `pnpm commerce:preview`             | Serve the built Commerce UI at `http://127.0.0.1:4174`, with the same `/api` proxy.            |
+| Command                                                             | Purpose                                                                                                                             |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm build`                                                        | Compile all projects (`tsc -b`) and build both UI clients.                                                                          |
+| `pnpm dev`                                                          | Run both backend apps in watch mode against source.                                                                                 |
+| `pnpm format` / `pnpm format:check`                                 | Apply or check Prettier.                                                                                                            |
+| `pnpm lint` / `pnpm typecheck`                                      | Type-aware ESLint (builds types first); type-check source, tests and both clients.                                                  |
+| `pnpm db:migrate` / `pnpm db:seed`                                  | Apply migrations; insert the catalog (existing SKUs are never changed, stock is never restored).                                    |
+| `pnpm test` / `pnpm test:coverage`                                  | Unit and integration tests, with the per-module 80% line coverage gate. Need Compose Postgres and `TEST_DATABASE_URL`.              |
+| `pnpm test:smoke`                                                   | Telemetry, load-generator and fault-leakage smoke tests under the production `--import` preload.                                    |
+| `pnpm e2e:jaeger`, `pnpm e2e:prometheus`                            | **Local only, mutate data:** place orders against the running stack and check traces or metrics arrive. Not part of CI.             |
+| `pnpm loadgen --profile steady --seed 42 [--dry-run] [--json]`      | Seeded load. **A live run creates about 923 real orders** and uses 2,771 units of stock; `--dry-run` sends nothing.                 |
+| `pnpm incident <command>`                                           | `list`, `ground-truth`, `validate`, `capture-check`, `run`. See [incidents](docs/incidents-and-handoff.md); `run` is consequential. |
+| `pnpm web`, `pnpm web:dev`, `pnpm web:build`                        | Incident dashboard server, client dev server, client build.                                                                         |
+| `pnpm commerce:dev`, `pnpm commerce:build`, `pnpm commerce:preview` | Storefront dev server, build, preview of the build.                                                                                 |
 
-`pnpm e2e:jaeger` needs the Compose stack running with telemetry (`docker compose up -d --build --wait`) and `DATABASE_URL` pointing at its Postgres, as the default `.env` does. It places one order and exits 1 with diagnostics if the traces are missing or unlinked. It is not part of CI.
+Command details and their safety notes: [docs/incidents-and-handoff.md](docs/incidents-and-handoff.md), [docs/prompts/m4-design.md](docs/prompts/m4-design.md) (load generation), [docs/prompts/m5c-design.md](docs/prompts/m5c-design.md) (incident CLI).
 
-`pnpm e2e:prometheus` needs the same running stack. It places three orders, one rejected order and one request to an unknown URL, then waits up to 30 seconds for the expected series. It exits 1 with diagnostics if a series, a label, or the `job` and `instance` labels are wrong. It is not part of CI.
-
-`pnpm loadgen --profile steady --seed 42` needs a build (`pnpm build`) and a running orders API at `ORDERS_API_URL`, default `http://localhost:3000`. Both flags are required.
-
-- `--dry-run` prints the entry count, the mix and the plan hash, and sends nothing. `--json` prints a machine-readable report.
-- A live run first checks the API's `/readyz`, the catalog, and that at most 5% of the planned order-item quantity is short of current stock. It then offers 55 requests per second for 65 seconds and reports offered, sent, successful, failed, missed and skipped requests, throughput, failure rate and latency. It exits 1 if throughput is under 50 rps, p95 is 200 ms or more, or failures are 1% or more.
-- A steady run with seed 42 creates 923 real orders for 2,771 units of stock. `pnpm db:seed` never restores stock, and the load generator never resets or reseeds the database; recreating it is a manual step.
-
-`pnpm incident <command>` needs a build (`pnpm build`). `list`, `ground-truth --scenario <name> --seed <n>` and `validate <bundle-dir>` make no network calls. `capture-check` is read-only: it never starts faults, services or load, and writes nothing; it exits 0 when every check passes, 1 when one fails, and 5 when none fails but some are inconclusive. `run --scenario <name> --seed <n>` runs a scenario end to end. The `docker compose ps` output, the `compose.faults.yaml` loopback binding and the API identity premise were verified on 2026-10-25. The stack can run with `compose.faults.yaml`, which binds the API, worker, Jaeger and Prometheus to `127.0.0.1`; `pnpm incident capture-check` passed all 13 checks against it on 2026-10-25, and every live run still needs the owner's separate approval. Trace volume and Jaeger capture time are not yet verified. Starting the stack with `compose.faults.yaml`, and every live run, needs the owner's separate approval. See `docs/prompts/m5c-design.md`.
-
-The design is in [docs/prompts/m4-design.md](docs/prompts/m4-design.md).
-
-### Incident dashboard
-
-`apps/web` is a read-only dashboard over the incident bundles (React, TypeScript, Vite, Tailwind CSS). It lists every run in `INCIDENTS_DIR` with its scenario, detection time and validation result; shows each run's ground truth, primary-symptom series, logs, sample traces and evidence files; and shows live readiness of the orders API, worker, Prometheus and Jaeger. Everything shown comes from the bundles on disk or from the components' own endpoints at request time. It never starts a run or changes fault state.
+## Tests and quality gates
 
 ```sh
-pnpm build   # compiles the server and builds the client into apps/web/dist/client
-pnpm web     # http://127.0.0.1:3100
+docker compose up -d --wait postgres    # tests need Postgres (and the init script creates commerce_test)
+pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm test:smoke
 ```
 
-For client development, run `pnpm web` (the API) and `pnpm web:dev` side by side, and open `http://127.0.0.1:5173`; Vite proxies `/api` to port 3100. The server binds only to `127.0.0.1`. Its settings (`WEB_PORT`, `INCIDENTS_DIR`, `ORDERS_API_URL`, `WORKER_HEALTH_URL`, `PROMETHEUS_URL`, `JAEGER_URL`) are in `.env.example`; upstream URLs must use `127.0.0.1` or `[::1]`. Without the stack running, the incident views still work and the health view reports each component as unreachable. Its tests run with `pnpm test`: the server against bundles written to temporary directories, the client in jsdom against a stubbed `fetch`.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs install with the frozen lockfile, format check, lint, typecheck, migrations, seed, `test:coverage` and `test:smoke` against a Postgres service container, on every push and pull request. UI tests run in jsdom against a stubbed `fetch`; they are part of `pnpm test`.
 
-Worker settings, such as concurrency, timeouts, retry limits, and backoff, are documented in `.env.example`. The worker refuses to start with an unsafe combination, for example a claim timeout shorter than 1.5 times its processing budget.
-
-### Commerce UI
-
-`apps/commerce-web` is the customer-facing UI (React, TypeScript, Vite, Tailwind CSS), separate from the incident dashboard. It places orders (SKU, quantity and a test payment method, from typed SKUs, the real catalog, or a product search with suggestions over the whole catalog), lists the order history with search and status filters, and shows an order's items, totals, timestamps and status, polling `GET /orders/:id` every 2 seconds until the order is `paid` or `failed`. It is a static client: it has no fault or scenario controls and reads nothing but the orders API.
+## Stop
 
 ```sh
-docker compose up -d --wait   # or any orders API on ORDERS_API_URL
-pnpm commerce:dev             # http://127.0.0.1:5174
+docker compose down        # stops and removes containers; keeps the database volume
 ```
 
-The browser calls same-origin `/api/*`; the Vite dev and preview servers proxy it to `ORDERS_API_URL` (default `http://127.0.0.1:3000`), stripping the `/api` prefix, so the API needs no CORS. To use another base URL, set `VITE_API_BASE_URL` when building (the API then needs to allow that origin). Both read the repository's `.env`. `pnpm build && pnpm commerce:preview` serves the production build at `http://127.0.0.1:4174`. Orders placed through the UI are real orders: they use stock that `pnpm db:seed` never restores. The order history needs an orders API built from this version, since `GET /orders` is new in M7. Its tests run with `pnpm test`, in jsdom against a stubbed `fetch`.
+`docker compose down -v` also **deletes the database volume** (all orders and the seeded catalog); recreating it is a manual step. Stop `pnpm web`, `pnpm commerce:dev`, `pnpm commerce:preview` and `pnpm dev` with Ctrl-C.
 
-## Layout
+## Troubleshooting
 
-```
-apps/orders-api      HTTP API: routes, validation, pricing
-apps/worker          slot-based loop, processor, payment simulator, shutdown
-apps/web             read-only incident dashboard: Fastify JSON API and React client
-apps/commerce-web    Commerce UI: place orders, order history, live order status (static React client)
-packages/db          migrations, seed, and all order data access
-infra/postgres/init  creates the commerce_test database on first start
-docs/                architecture, roadmap, ADRs, design and prompts
-```
+| Symptom                                                                | Fix                                                                                                                                                                                                   |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Port 5432 already in use                                               | Set `POSTGRES_PORT` in `.env`, and update `DATABASE_URL` / `TEST_DATABASE_URL` to match.                                                                                                              |
+| Tests fail to connect                                                  | `docker compose up -d --wait postgres`, and check `TEST_DATABASE_URL` in `.env`.                                                                                                                      |
+| `pnpm incident` or `pnpm loadgen` says a file under `dist/` is missing | Run `pnpm build` first.                                                                                                                                                                               |
+| Storefront shows errors loading products or orders                     | The orders API is not running or not reachable at `ORDERS_API_URL`; start the stack. The order history needs an API built from this version (`GET /orders` is newer): `docker compose up -d --build`. |
+| Dashboard health shows everything unreachable                          | The stack is not running or the URLs in `.env` do not match. Incident views still work.                                                                                                               |
+| Dashboard lists no incidents                                           | `INCIDENTS_DIR` is empty or elsewhere. Bundles are not committed; see [incidents](docs/incidents-and-handoff.md).                                                                                     |
+| Storefront tab has no icon                                             | Fixed 2026-10-27; rebuild with `pnpm commerce:build`.                                                                                                                                                 |
+| Worker or API refuses to start                                         | Invalid configuration fails fast with a message naming the variable.                                                                                                                                  |
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
-- [Roadmap](docs/roadmap.md)
-- [Decision records](docs/decisions/)
-- [M2 design](docs/prompts/m2-design.md)
-- [Engineering rules](CLAUDE.md)
+See the [documentation index](docs/README.md). Direct links: [architecture](docs/architecture.md), [incident scenarios, bundles and the handoff](docs/incidents-and-handoff.md), [UI visual QA](docs/ui-visual-qa.md), [roadmap](docs/roadmap.md), [decision records](docs/decisions/), [engineering rules](CLAUDE.md).
+
+## Layout
+
+```text
+apps/orders-api      HTTP API: routes, validation, pricing
+apps/worker          slot-based loop, processor, payment simulator, shutdown
+apps/loadgen         seeded, deterministic load profiles
+apps/incident        incident CLI: scenarios, capture, bundle writer
+apps/web             read-only incident dashboard: Fastify JSON API and React client
+apps/commerce-web    storefront: place orders, order history, live order status (static React client)
+packages/db          migrations, seed, and all order data access
+packages/faults      scenario registry and fault hooks; inert unless a scenario is started
+packages/telemetry   OpenTelemetry setup and shared metric names
+packages/incident-bundle  bundle schema, validator and writer
+infra/               collector, Prometheus and Postgres init configuration
+docs/                architecture, roadmap, ADRs, design documents, screenshots
+```

@@ -8,16 +8,18 @@ Run a believable commerce workload locally, inject faults on demand, and export 
 
 Each component appears only in the milestone that gives it real code.
 
-| Component            | Milestone | Responsibility                                                                                            | Does not                                                  |
-| -------------------- | --------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `apps/orders-api`    | M1        | Fastify HTTP API for catalog and orders. Writes orders as `pending`.                                      | Process orders inline.                                    |
-| `apps/worker`        | M1        | Claims due orders for free slots only, reserves stock, charges through the payment simulator, reconciles. | Serve public traffic. It exposes health endpoints only.   |
-| `packages/db`        | M1        | SQL migrations, migration runner, connection pool factory, data-access functions.                         | Contain business rules.                                   |
-| `apps/loadgen`       | M4        | Seeded, deterministic traffic profiles against the orders API.                                            | Inspect internal state.                                   |
-| `packages/telemetry` | M3        | OpenTelemetry SDK setup and shared metric names for both apps.                                            | Know about business logic.                                |
-| fault package        | M5        | Scenario registry and injection hooks. Inert unless enabled.                                              | Change behavior by default.                               |
-| incident tool        | M5        | Runs a scenario end to end and writes an incident bundle.                                                 | Analyze or diagnose incidents.                            |
-| `apps/web`           | M7        | React UI for placing orders, viewing order history and status, and running demo scenarios.                | Contain business rules. It uses only the public HTTP API. |
+| Component                  | Milestone | Responsibility                                                                                            | Does not                                                  |
+| -------------------------- | --------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `apps/orders-api`          | M1        | Fastify HTTP API for catalog and orders. Writes orders as `pending`.                                      | Process orders inline.                                    |
+| `apps/worker`              | M1        | Claims due orders for free slots only, reserves stock, charges through the payment simulator, reconciles. | Serve public traffic. It exposes health endpoints only.   |
+| `packages/db`              | M1        | SQL migrations, migration runner, connection pool factory, data-access functions.                         | Contain business rules.                                   |
+| `apps/loadgen`             | M4        | Seeded, deterministic traffic profiles against the orders API.                                            | Inspect internal state.                                   |
+| `packages/telemetry`       | M3        | OpenTelemetry SDK setup and shared metric names for both apps.                                            | Know about business logic.                                |
+| `packages/faults`          | M5        | Scenario registry and injection hooks. Inert unless enabled.                                              | Change behavior by default.                               |
+| `apps/incident`            | M5        | Incident CLI: runs a scenario end to end and writes an incident bundle.                                   | Analyze or diagnose incidents.                            |
+| `packages/incident-bundle` | M5        | Bundle schema, validator and writer.                                                                      | Know about scenarios.                                     |
+| `apps/web`                 | M7        | Read-only incident dashboard (Fastify JSON API plus React client) over the bundles and component health.  | Start runs or change fault state.                         |
+| `apps/commerce-web`        | M7        | Storefront: product search, order form, order history, live order status (static React client).           | Contain business rules. It uses only the public HTTP API. |
 
 Pure order and pricing rules start inside the app that uses them. They move to a shared package only if a second consumer appears.
 
@@ -30,6 +32,59 @@ loadgen -> orders-api -> postgres <- worker
                  \           |         /
                   ---> otel-collector ---> jaeger, prometheus   (M3+; read by the M5 incident capture)
 ```
+
+## Runtime view
+
+What runs where, as of 2026-10-27. Compose runs the backend and telemetry; the two UIs and the CLIs run on the host.
+
+```mermaid
+flowchart LR
+    subgraph host[Host]
+        SF[Storefront<br/>:5174 dev, :4174 preview]
+        DASH[Incident dashboard<br/>:3100, 127.0.0.1 only]
+        CLI[pnpm incident, pnpm loadgen]
+        BUND[(incidents/<br/>bundles, git-ignored)]
+    end
+    subgraph compose[Docker Compose]
+        API[orders-api :3000]
+        W[worker :3001 health]
+        PG[(PostgreSQL 16 :5432)]
+        COL[otel-collector :4318]
+        J[Jaeger :16686]
+        P[Prometheus :9090]
+    end
+    SF -- same-origin /api, proxied --> API
+    API --> PG
+    W --> PG
+    API -- OTLP --> COL
+    W -- OTLP --> COL
+    COL --> J
+    COL --> P
+    DASH -- reads --> BUND
+    DASH -. readiness only .-> API
+    DASH -. readiness only .-> W
+    DASH -. readiness only .-> J
+    DASH -. readiness only .-> P
+    CLI -- load --> API
+    CLI -- scenario control, FAULTS_ENABLED only --> API
+    CLI -- capture --> J
+    CLI -- capture --> P
+    CLI -- writes --> BUND
+```
+
+**Request flow.** A storefront order is `POST /api/orders` to the orders API (same-origin proxy in dev and preview), inserted as `pending`; the worker claims it, reserves stock, charges through the in-process payment simulator and finalizes it. The storefront polls `GET /orders/:id` every 2 seconds until `paid` or `failed`.
+
+**Incident flow.** `pnpm incident run` applies seeded load, starts a fault through the scenario control endpoints, waits for the primary symptom, captures traces (Jaeger), metrics (Prometheus) and container logs, stops the fault, and writes and validates a bundle. The dashboard only reads the finished bundles and the components' readiness endpoints.
+
+**Storage.** PostgreSQL holds the `products` catalog (with stock), `orders` (including the stock reservation timestamp), `order_items` and the `payment_charges` ledger; migrations are plain forward-only SQL in `packages/db`. Telemetry lives in Jaeger and Prometheus memory and is not durable. Bundles are files under `incidents/`.
+
+**Error handling and resilience.** The worker logs and retries database errors rather than crashing, retries unknown payment outcomes with backoff, reconciles with a lookup that can void, parks unresolved orders in `payment_unknown`, and fences stale claims with `processing_attempts`. Telemetry failures never change order outcomes or health. Configuration is validated with Zod at startup and an unsafe combination stops the service.
+
+**Observability.** JSON logs carry `trace_id` and `span_id`; every worker pass is its own trace, linked to the order's creation trace; Prometheus metrics use low-cardinality labels. Health is `GET /healthz` (process) and `GET /readyz` (can reach Postgres), and the dashboard's health page shows each component's own endpoint.
+
+**Security boundaries.** There is no authentication and no real payment: this is a local development system with development credentials (`commerce` / `commerce`). `compose.yaml` publishes ports on all interfaces; `compose.faults.yaml` binds the API, worker, Jaeger and Prometheus to `127.0.0.1` (Postgres and the collector are not rebound). The dashboard binds `127.0.0.1` and accepts only loopback upstream URLs. Fault controls exist only when `FAULTS_ENABLED=true`. Nothing calls an external network service.
+
+**Start and test.** `docker compose up -d --build --wait`, then `pnpm web` and `pnpm commerce:preview` on the host; tests need the Compose Postgres. See the [README](../README.md).
 
 ## Order processing
 
@@ -57,7 +112,7 @@ Status transitions, enforced in code and by a trigger: `pending -> processing`, 
 
 ## Frontend readiness
 
-A React UI is planned for M7, after M5 and before the separate Engineering Operations AI repository is started. Proposed ADR 0008 records this order, and ADR 0004 the API-first rules below. Until then, there is no frontend code, but the backend is built so a UI can be added without changing business logic.
+Two React UIs now exist, both started early by the owner's decision (see M7 in the roadmap): the storefront and the incident dashboard described below. Proposed ADR 0008 records the project order, and ADR 0004 the API-first rules that follow. The backend is built so a UI needs no change to business logic.
 
 - **Business rules stay in the backend.** Pricing, stock, and lifecycle rules live in the API and worker. The UI only displays state and submits requests.
 - **Contracts are presentation-neutral.** Responses are JSON with stable field names, ISO 8601 timestamps, and integer cents. Any text a user sees is chosen by the UI, not returned by the API.
@@ -65,7 +120,7 @@ A React UI is planned for M7, after M5 and before the separate Engineering Opera
 - **Status is readable without guessing.** Order responses include the status, failure reason, and attempt count, so the UI can show progress by polling `GET /orders/:id`.
 - **Lists are paginated with cursors,** so order history and catalog views scale.
 - **Demo scenarios use the same API as everything else.** The M5 scenario control endpoints list, start, stop, and report on scenarios, and exist only when `FAULTS_ENABLED=true`.
-- **No UI concerns leak into the backend yet.** CORS, sessions, and static file serving are decided in M7.
+- **No UI concerns leak into the backend.** The storefront uses a same-origin `/api` proxy, so the orders API has no CORS and serves no static files.
 
 **M7 Commerce UI.** `apps/commerce-web` is a static React client (TypeScript, Vite, Tailwind CSS) that uses only the public orders API: `GET /products`, `POST /orders` with an `Idempotency-Key` per distinct submission, `GET /orders` and `GET /orders/:id`. It keeps no business rules: its input checks mirror the API's request schema, and the API's `400` and `422` answers are mapped back onto the form. It polls `GET /orders/:id` every 2 seconds, one request at a time, until `paid` or `failed`, backing off up to 30 seconds on transient failures. The browser calls same-origin `/api`, which the Vite dev and preview servers proxy to the API, so the API adds no CORS or static file serving. The API has no customer identity, so `GET /orders` lists every order, newest first by `(created_at, id)`, with the last order's ID as the cursor; it sorts without a dedicated index, which is enough for local data sets. Each row carries its first three items by SKU, so the history needs no request per order. Optional `status` and `q` (an order-ID prefix, or part of an item's SKU or name, with LIKE wildcards matched literally) filter before the page is cut, so search covers every order; the UI starts again from the first page whenever they change. Product search needs no API change: the UI reads the catalog once through `GET /products` (100 per page, at most 5,000 products), then matches names and SKUs locally. Fault and scenario controls are not part of this UI.
 
@@ -73,7 +128,7 @@ A first slice started early, by the owner's decision (`docs/roadmap.md`, M7): `a
 
 ## Fault scenarios
 
-A scenario has a name, a seed, a start trigger, a duration, and a ground-truth description. Planned examples:
+A scenario has a name, a seed, a start trigger, a duration, and a ground-truth description. **Implemented** (`pnpm incident list`; details in [incidents-and-handoff.md](incidents-and-handoff.md)): `provider-outage`, `payment-timeouts`, `api-pool-exhaustion`, `bad-deploy-order-reads` and `poison-order`. The list below is the original set of ideas; those not named above are **not** implemented:
 
 - Slow query from a missing index on a growing table.
 - Connection pool exhaustion under load.
